@@ -1,6 +1,5 @@
 import glob, os
 
-# returns audio filename from given .osu file
 def getAudioFilename(file):
     f = open(file, 'rt')
     for line in f:
@@ -11,7 +10,6 @@ def getAudioFilename(file):
             continue
     raise Exception(".osu file with no audio filename")
 
-# returns whether given map is a taiko map
 def isTaiko(file):
     f = open(file, 'rt')
     for line in f:
@@ -32,8 +30,8 @@ def delete(file):
         return 0
 
 
-mscFilesDeleted = 0  # miscellaneous files (anything but .osu) deleted counter
-osuFilesDeleted = 0  # .osu files deleted counter
+mscFilesDeleted = 0
+osuFilesDeleted = 0
 print("Provide address to collective Songs folder to simplify. Everything will be deleted except taiko .osu files and necessary audio files (and directories).")
 dirInput = input("")
 for root, dirs, files in os.walk(dirInput):
