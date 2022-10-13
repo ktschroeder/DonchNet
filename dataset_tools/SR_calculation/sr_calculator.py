@@ -16,7 +16,7 @@ stamina_skill_multiplier = 0.375 * final_multiplier
 # public double RhythmDifficultyValue => rhythm.DifficultyValue() * rhythm_skill_multiplier;
 # public double StaminaDifficultyValue => stamina.DifficultyValue() * stamina_skill_multiplier;
 
-def norm(p, values):
+def norm(p, values):  # TODO look at papers mentioning osu's SR algorithms
     x = 0
     for i in values:
         x += pow(i, p)
