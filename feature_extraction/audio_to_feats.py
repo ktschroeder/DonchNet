@@ -1,4 +1,17 @@
 import os, pickle
+import unicodedata, re
+
+
+def makeSafeFilename(name):  # taken from Django's slugify function
+    # Normalizes string, converts to lowercase, removes non-alpha characters, and converts spaces to underscores.
+    name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii')
+    name = re.sub(r'[^\w\s-]', '', name.lower())
+    return re.sub(r'[-\s]+', '_', name).strip('-_')
+
+def getTitleAndDiff(folder, jsons):  # TODO pretty bad, refactor this
+    for i in range(len(jsons)):
+        if jsons[i][]
+
 
 # @misc{fayek2016,
 #       title   = "Speech Processing for Machine Learning: Filter banks, Mel-Frequency Cepstral Coefficients (MFCCs) and What's In-Between",
@@ -6,7 +19,7 @@ import os, pickle
 #       year    = "2016",
 #       url     = "https://haythamfayek.com/2016/04/21/speech-processing-for-machine-learning.html"
 #     }
-def getFeats(file, songFolder):  # './sample_maps/1061593 katagiri - Urushi/audio.wav'
+def getFeats(file, songFolder, jsons):  # './sample_maps/1061593 katagiri - Urushi/audio.wav'
     import numpy
     import scipy.io.wavfile
     from scipy.fftpack import dct
@@ -76,7 +89,7 @@ def getFeats(file, songFolder):  # './sample_maps/1061593 katagiri - Urushi/audi
     #
     mfcc -= (numpy.mean(mfcc, axis=0) + 1e-8)  # TODO one thing to test in model will be mel bands versus mfcc
     #
-    
+    title, diff = getTitleAndDiff(songFolder, jsons)
     filepath = os.path.join("./data/mels/", songFolder) + '.pkl'
     with open(filepath, 'wb') as f:
         pickle.dump(filter_banks, f)
