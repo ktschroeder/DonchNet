@@ -36,7 +36,7 @@ def makeMels():  # want to send title and mapper
 def jointlyMakeJsonsAndMels():
     mainDir = "C:/Users/Admin/Documents/small_taiko_dataset"  # TODO temporary
     for songFolder in os.listdir(mainDir):  # first makem JSONs and get JSON info for ID that will be used in creating mels
-        newDir = os.path.join("data/feat_pkls", songFolder)
+        newDir = os.path.join("data/stored_feats", songFolder)
         if not os.path.exists(newDir):
             os.mkdir(newDir)
         json = ""

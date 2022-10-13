@@ -1,5 +1,5 @@
 data/json/*
 data/mels/*
-data/feat_pkls/*
+data/stored_feats/*
 */__pycache__
 __pycache__
