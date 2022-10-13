@@ -7,7 +7,7 @@ def makeSafeFilename(name):  # taken from Django's slugify function
     return re.sub(r'[-\s]+', '_', name).strip('-_')
 
 
-def mapToJson(file):  # "C:/Users/Admin/Documents/GitHub/taiko-project/dataset_tools/DJ SIMON - 321STARS (Zelos) [Taiko Oni].osu"
+def mapToJson(file, targetDir):  # "C:/Users/Admin/Documents/GitHub/taiko-project/dataset_tools/DJ SIMON - 321STARS (Zelos) [Taiko Oni].osu"
 
     osu = open(file,'rt').readlines()
     out = {}
@@ -84,7 +84,8 @@ def mapToJson(file):  # "C:/Users/Admin/Documents/GitHub/taiko-project/dataset_t
             out['hitobjects'].append(object)
 
     output = json.dumps(out).replace('\n','')
-    dest = os.path.join("./data/json/", makeSafeFilename(out["metadata"]["Title"].strip()) + '-' + makeSafeFilename(out["metadata"]["Creator"].strip()) + '-' + makeSafeFilename(out["metadata"]["Version"].strip()) + '.json')
+    dest = os.path.join(targetDir, makeSafeFilename(out["metadata"]["Title"].strip()) + '-' + makeSafeFilename(out["metadata"]["Creator"].strip()) + '-' + makeSafeFilename(out["metadata"]["Version"].strip()) + '.json')
+   
     with open(dest,'w') as file:
         file.write(output)
-    return 1
+    return output

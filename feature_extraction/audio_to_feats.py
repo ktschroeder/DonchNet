@@ -8,9 +8,8 @@ def makeSafeFilename(name):  # taken from Django's slugify function
     name = re.sub(r'[^\w\s-]', '', name.lower())
     return re.sub(r'[-\s]+', '_', name).strip('-_')
 
-def getTitleAndDiff(folder, jsons):  # TODO pretty bad, refactor this
-    for i in range(len(jsons)):
-        if jsons[i][]
+
+
 
 
 # @misc{fayek2016,
@@ -19,7 +18,7 @@ def getTitleAndDiff(folder, jsons):  # TODO pretty bad, refactor this
 #       year    = "2016",
 #       url     = "https://haythamfayek.com/2016/04/21/speech-processing-for-machine-learning.html"
 #     }
-def getFeats(file, songFolder, jsons):  # './sample_maps/1061593 katagiri - Urushi/audio.wav'
+def makeFeats(file, targetDir, songFolder):  # './sample_maps/1061593 katagiri - Urushi/audio.wav'
     import numpy
     import scipy.io.wavfile
     from scipy.fftpack import dct
@@ -89,8 +88,8 @@ def getFeats(file, songFolder, jsons):  # './sample_maps/1061593 katagiri - Urus
     #
     mfcc -= (numpy.mean(mfcc, axis=0) + 1e-8)  # TODO one thing to test in model will be mel bands versus mfcc
     #
-    title, diff = getTitleAndDiff(songFolder, jsons)
-    filepath = os.path.join("./data/mels/", songFolder) + '.pkl'
+    # title, diff = getTitleAndDiff(songFolder, jsons)
+    filepath = os.path.join(targetDir, songFolder) + '.pkl'
     with open(filepath, 'wb') as f:
         pickle.dump(filter_banks, f)
     return 1

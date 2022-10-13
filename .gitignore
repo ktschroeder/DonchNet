@@ -1,4 +1,5 @@
-data/json
-data/mels
+data/json/*
+data/mels/*
+data/feat_pkls/*
 */__pycache__
 __pycache__
