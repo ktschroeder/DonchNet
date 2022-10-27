@@ -8,7 +8,7 @@ from tensorflow import keras
 from keras import layers, models
 import tensorflow as tf
 from tensorflow.keras import Sequential
-from tensorflow.keras.layers import LSTM, Conv2D, Dense, Flatten, TimeDistributed, MaxPool2D
+from tensorflow.keras.layers import LSTM, Conv2D, Dense, Flatten, TimeDistributed, MaxPool2D, Dropout
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.backend import clear_session
 from tensorflow.keras.activations import tanh, elu, relu
@@ -178,7 +178,7 @@ def createConvLSTM():
     conv1d_strides = 12
     conv1d_1_strides = 12   
     conv1d_filters = 4
-    hidden_units = 12
+    hidden_units = 42
     # padding_value = -999
     # seq_length_cap = 30000  # 30000 frames = 300 seconds = 5 minutes
 
@@ -208,12 +208,18 @@ def createConvLSTM():
     model.add(TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same')))
     model.add(TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same')))
     model.add(TimeDistributed(Flatten())) # see above notes, does this overly flatten temporal?
-    model.add(LSTM(hidden_units))
+    model.add(LSTM(hidden_units, return_sequences=True))
+    model.add(Dropout(0.5, noise_shape=(None,1,hidden_units)))  # is this shape correct?
+    model.add(LSTM(hidden_units, return_sequences=True))  # TODO do we want return_sequences again, really?
+    model.add(Dropout(0.5, noise_shape=(None,1,hidden_units))) 
     model.add(Dense(256, activation='relu'))
+    model.add(Dropout(0.5)) 
     model.add(Dense(128, activation='relu'))
+    model.add(Dropout(0.5)) 
     
-    model.compile(optimizer=Adam(learning_rate=learning_rate), loss='binary_crossentropy')# loss=error_to_signal, metrics=[error_to_signal])
+    model.compile(optimizer=keras.optimizers.SGD(momentum=0.01, nesterov=True, learning_rate=learning_rate), loss='binary_crossentropy')#, loss='binary_crossentropy'))# loss=error_to_signal, metrics=[error_to_signal]) previously used Adam
     
+
     test_size = 0.2
     epochs = 1
     batch_size = 25 # ? decreasing this from total map count makes more parts per epoch. (frequently weights are updated)
