@@ -8,7 +8,7 @@ from tensorflow import keras
 from keras import layers, models
 import tensorflow as tf
 from tensorflow.keras import Sequential
-from tensorflow.keras.layers import LSTM, Conv2D, Dense, Flatten, TimeDistributed
+from tensorflow.keras.layers import LSTM, Conv2D, Dense, Flatten, TimeDistributed, MaxPool2D
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.backend import clear_session
 from tensorflow.keras.activations import tanh, elu, relu
@@ -197,18 +197,23 @@ def createConvLSTM():
     # Create Sequential Model ###########################################
     clear_session()
     model = Sequential()
-    model.add(TimeDistributed(Conv2D(conv1d_filters, (7,3),strides=conv1d_strides, activation=None, padding='same',input_shape=(25,40,1,1)))) # shape is 12+1+12 frames x 40 frequency bands
-    model.add(TimeDistributed(Conv2D(conv1d_filters, (7,3),strides=conv1d_strides, activation=None, padding='same')))
+    model.add(TimeDistributed(Conv2D(10, (7,3),strides=conv1d_strides, activation='relu', padding='same',input_shape=(25,40,1,1)))) # shape is 12+1+12 frames x 40 frequency bands
+    model.add(TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same')))
+    model.add(TimeDistributed(Conv2D(20, (7,3),strides=conv1d_strides, activation='relu', padding='same')))
+    model.add(TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same')))
     model.add(TimeDistributed(Flatten())) # see above notes, does this overly flatten temporal?
     model.add(LSTM(hidden_units))
-    model.add(Dense(1, activation=None))
+    model.add(Dense(40, activation='relu'))
+    model.add(Dense(20, activation='relu'))
     
     model.compile(optimizer=Adam(learning_rate=learning_rate), loss='binary_crossentropy')# loss=error_to_signal, metrics=[error_to_signal])
     
     print(x.shape, y.shape)
-    history = model.fit(x, y, batch_size=17, epochs=1)
+    print("begin fit")
+    history = model.fit(x, y, batch_size=17, epochs=5, verbose=1)
     # model.build((17,1,30000,40,1))
     print(model.summary())
+    print(history)
 
 
     # indices = tf.range(start=0, limit=tf.shape(songFeats)[0], dtype=tf.int32)
@@ -230,8 +235,10 @@ def createConvLSTM():
     # y_random = tf.gather(mapFeats, shuffled_indices)
 
     # mapFeats = tf.ragged.constant(mapFeats)
-    print("begin fit")
-    model.fit(x, y, epochs=epochs, batch_size=batch_size, validation_split=test_size, verbose=1)
+    # print("begin fit")
+    # model.fit(x, y, epochs=epochs, batch_size=batch_size, validation_split=test_size, verbose=1)
+    
+    
     # model.fit(np.asarray(songFeats).astype('float32'), np.asarray(mapFeats).astype('float32'), epochs=epochs, batch_size=batch_size, validation_split=test_size)
     #model.save('test_model.h5')
 
