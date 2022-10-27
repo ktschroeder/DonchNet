@@ -187,18 +187,27 @@ def createConvLSTM():
     #     xpad[s, 0:seq_len, :] = x
     # print(xpad)
 
-    x = x.reshape(len(x),len(x[0]),len(x[0][0]),1)  # 17, 30000, 40, 1
-    y = y.reshape(len(y),len(y[0]),1)   
+    print(x.shape, y.shape)
+
+    x = reshape(x, (len(x), len(x[0]), len(x[0][0]), 1,1))  # 17, 30000, 40, 1
+    y = y.reshape((len(y),len(y[0]),1,1))   
+    x = x.astype(float32)
+    
 
     # Create Sequential Model ###########################################
     clear_session()
     model = Sequential()
-    model.add(Conv2D(conv1d_filters, (7,3),strides=conv1d_strides, activation=None, padding='same',input_shape=(25,40,1))) # shape is 12+1+12 frames x 40 frequency bands
-    model.add(Conv2D(conv1d_filters, (7,3),strides=conv1d_strides, activation=None, padding='same'))
+    model.add(TimeDistributed(Conv2D(conv1d_filters, (7,3),strides=conv1d_strides, activation=None, padding='same',input_shape=(25,40,1,1)))) # shape is 12+1+12 frames x 40 frequency bands
+    model.add(TimeDistributed(Conv2D(conv1d_filters, (7,3),strides=conv1d_strides, activation=None, padding='same')))
     model.add(TimeDistributed(Flatten())) # see above notes, does this overly flatten temporal?
     model.add(LSTM(hidden_units))
     model.add(Dense(1, activation=None))
-    model.compile(optimizer=Adam(learning_rate=learning_rate))# loss=error_to_signal, metrics=[error_to_signal])
+    
+    model.compile(optimizer=Adam(learning_rate=learning_rate), loss='binary_crossentropy')# loss=error_to_signal, metrics=[error_to_signal])
+    
+    print(x.shape, y.shape)
+    history = model.fit(x, y, batch_size=17, epochs=1)
+    # model.build((17,1,30000,40,1))
     print(model.summary())
 
 
@@ -214,15 +223,15 @@ def createConvLSTM():
     # y = mapFeats.reshape(len(mapFeats), 1)
 
     test_size = 0.2
-    epochs = 5
+    epochs = 2
     batch_size = 3 # ?
     # shuffled_indices = np.random.permutation(len(songFeats)) 
     # X_random = tf.gather(songFeats, shuffled_indices)
     # y_random = tf.gather(mapFeats, shuffled_indices)
 
     # mapFeats = tf.ragged.constant(mapFeats)
-
-    model.fit(x, y, epochs=epochs, batch_size=batch_size, validation_split=test_size)
+    print("begin fit")
+    model.fit(x, y, epochs=epochs, batch_size=batch_size, validation_split=test_size, verbose=1)
     # model.fit(np.asarray(songFeats).astype('float32'), np.asarray(mapFeats).astype('float32'), epochs=epochs, batch_size=batch_size, validation_split=test_size)
     #model.save('test_model.h5')
 
