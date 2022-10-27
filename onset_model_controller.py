@@ -67,8 +67,8 @@ def jointlyGetMapAndSongFeats():
 
 max_sequence_length = 30000
 def prepareFeatsForModel(mapFeats, songFeats, mapCount):
-    pMapFeats = np.full((mapCount, max_sequence_length), -999)
-    pSongFeats = np.full((mapCount, max_sequence_length, 40), -999)
+    pMapFeats = np.full((mapCount, max_sequence_length), -500)
+    pSongFeats = np.full((mapCount, max_sequence_length, 40), -500)
     idMap = -1
     idSong = -1
     
@@ -95,7 +95,7 @@ def prepareFeatsForModel(mapFeats, songFeats, mapCount):
                     groundTruth = 0
             # print(temp, "hits")
             for j in range(len(groundTruths), max_sequence_length):
-                groundTruths.append(-999)
+                groundTruths.append(0) # TODO this was -999, could be -1. 0 okay?
             # pMapFeats.append(tf.convert_to_tensor(groundTruths, dtype=tf.int32))
             pMapFeats[idMap] = groundTruths
 
@@ -108,7 +108,7 @@ def prepareFeatsForModel(mapFeats, songFeats, mapCount):
             pad = []
             for k in range (max_sequence_length - len(trimmedSongFeats)):
                 # print("got in with", max_sequence_length - len(trimmedSongFeats))
-                pad.append(np.full((40), -999))
+                pad.append(np.full((40), -500))
             # print(pad)
             if(len(pad) > 0):
                 trimmedSongFeats = np.vstack((trimmedSongFeats, pad))
@@ -116,37 +116,38 @@ def prepareFeatsForModel(mapFeats, songFeats, mapCount):
 
     return pMapFeats, pSongFeats
 
-def createModel(mapFeats, songFeats):
-    # model = keras.Sequential()
-    # # Add an Embedding layer expecting input vocab of size 1000, and
-    # # output embedding dimension of size 64.
-    # model.add(layers.Embedding(input_dim=1000, output_dim=64))
+# def createModel(mapFeats, songFeats):
+#     # model = keras.Sequential()
+#     # # Add an Embedding layer expecting input vocab of size 1000, and
+#     # # output embedding dimension of size 64.
+#     # model.add(layers.Embedding(input_dim=1000, output_dim=64))
 
-    # # Add a LSTM layer with 128 internal units.
-    # model.add(layers.LSTM(128))
+#     # # Add a LSTM layer with 128 internal units.
+#     # model.add(layers.LSTM(128))
 
-    # # Add a Dense layer with 10 units.
-    # model.add(layers.Dense(10))
+#     # # Add a Dense layer with 10 units.
+#     # model.add(layers.Dense(10))
 
-    # model.summary()
-    model = keras.Sequential()
-    model.add(layers.Embedding(input_dim=1000, output_dim=64))
+#     # model.summary()
+#     model = keras.Sequential()
+#     model.add(layers.Embedding(input_dim=1000, output_dim=64))
 
-    # The output of GRU will be a 3D tensor of shape (batch_size, timesteps, 256)
-    model.add(layers.GRU(256, return_sequences=True))
+#     # The output of GRU will be a 3D tensor of shape (batch_size, timesteps, 256)
+#     model.add(layers.GRU(256, return_sequences=True))
 
-    # The output of SimpleRNN will be a 2D tensor of shape (batch_size, 128)
-    model.add(layers.SimpleRNN(128))
+#     # The output of SimpleRNN will be a 2D tensor of shape (batch_size, 128)
+#     model.add(layers.SimpleRNN(128))
 
-    model.add(layers.Dense(10))
+#     model.add(layers.Dense(10))
 
-    model.summary()
+#     model.summary()
 
-    model.compile()  # TODO ensure my GPU is being used
-    print("compiled model")
+#     model.compile()  # TODO ensure my GPU is being used
+#     print("compiled model")
 
 def createConvLSTM():
     mapFeats, songFeats, count = jointlyGetMapAndSongFeats()
+    print(count, "maps total")
     y, x = prepareFeatsForModel(mapFeats, songFeats, count)
     #nn = models.Sequential()
     # nn.add(layers.Conv3D(?, activation = 'relu', input_dim=?)) # 
@@ -177,7 +178,7 @@ def createConvLSTM():
     conv1d_strides = 12
     conv1d_1_strides = 12   
     conv1d_filters = 4
-    hidden_units = 24
+    hidden_units = 12
     padding_value = -999
     seq_length_cap = 30000  # 30000 frames = 300 seconds = 5 minutes
 
@@ -197,20 +198,24 @@ def createConvLSTM():
     # Create Sequential Model ###########################################
     clear_session()
     model = Sequential()
-    model.add(TimeDistributed(Conv2D(10, (7,3),strides=conv1d_strides, activation='relu', padding='same',input_shape=(25,40,1,1)))) # shape is 12+1+12 frames x 40 frequency bands
+    model.add(TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',input_shape=(25,40,1,1)))) # shape is 12+1+12 frames x 40 frequency bands
     model.add(TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same')))
-    model.add(TimeDistributed(Conv2D(20, (7,3),strides=conv1d_strides, activation='relu', padding='same')))
+    model.add(TimeDistributed(Conv2D(20, (7,3),activation='relu', padding='same')))
     model.add(TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same')))
     model.add(TimeDistributed(Flatten())) # see above notes, does this overly flatten temporal?
     model.add(LSTM(hidden_units))
-    model.add(Dense(40, activation='relu'))
+    model.add(Dense(20, activation='relu'))
     model.add(Dense(20, activation='relu'))
     
     model.compile(optimizer=Adam(learning_rate=learning_rate), loss='binary_crossentropy')# loss=error_to_signal, metrics=[error_to_signal])
     
+    test_size = 0.2
+    epochs = 10
+    batch_size = 5 # ? decreasing this from total map count makes more parts per epoch. (frequently weights are updated)
+
     print(x.shape, y.shape)
     print("begin fit")
-    history = model.fit(x, y, batch_size=17, epochs=5, verbose=1)
+    history = model.fit(x, y, batch_size=batch_size, epochs=epochs, verbose=1, validation_split=test_size)
     # model.build((17,1,30000,40,1))
     print(model.summary())
     print(history)
@@ -227,9 +232,7 @@ def createConvLSTM():
     # mapFeats = np.asarray(mapFeats).astype('int32')
     # y = mapFeats.reshape(len(mapFeats), 1)
 
-    test_size = 0.2
-    epochs = 2
-    batch_size = 3 # ?
+    
     # shuffled_indices = np.random.permutation(len(songFeats)) 
     # X_random = tf.gather(songFeats, shuffled_indices)
     # y_random = tf.gather(mapFeats, shuffled_indices)

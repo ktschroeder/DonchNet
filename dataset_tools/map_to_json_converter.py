@@ -7,9 +7,18 @@ def makeSafeFilename(name):  # taken from Django's slugify function
     return re.sub(r'[-\s]+', '_', name).strip('-_')
 
 
-def mapToJson(file, targetDir):  # "C:/Users/Admin/Documents/GitHub/taiko-project/dataset_tools/DJ SIMON - 321STARS (Zelos) [Taiko Oni].osu"
+def mapToJson(file, targetDir, enc="utf8"):  # "C:/Users/Admin/Documents/GitHub/taiko-project/dataset_tools/DJ SIMON - 321STARS (Zelos) [Taiko Oni].osu"
 
-    osu = open(file,'rt').readlines()
+    osu = ""
+    
+    try:
+        osu = open(file,'rt', encoding=enc).readlines()
+    except UnicodeDecodeError:
+        if enc == "utf8":
+            return mapToJson(file, targetDir, "utf16")
+        if enc == "utf16":
+            print(f"mapToJson: utf8 and utf16 decoding both failed in file: {file}")
+
     out = {}
 
     def get_line(phrase):
@@ -84,7 +93,7 @@ def mapToJson(file, targetDir):  # "C:/Users/Admin/Documents/GitHub/taiko-projec
             out['hitobjects'].append(object)
 
     output = json.dumps(out).replace('\n','')
-    dest = os.path.join(targetDir, makeSafeFilename(out["metadata"]["Title"].strip()) + '-' + makeSafeFilename(out["metadata"]["Creator"].strip()) + '-' + makeSafeFilename(out["metadata"]["Version"].strip()) + '.json')
+    dest = os.path.join(targetDir, makeSafeFilename(out["metadata"]["Title"].strip()[:20]) + '-' + makeSafeFilename(out["metadata"]["Creator"].strip()[:20]) + '-' + makeSafeFilename(out["metadata"]["Version"].strip()[:20]) + '.json')
    
     with open(dest,'w') as file:
         file.write(output)
