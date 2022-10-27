@@ -2,6 +2,7 @@ import os
 import feature_extraction.map_json_to_feats as jtf
 import pickle
 import numpy as np
+from numpy import *
 import tensorflow as tf
 from tensorflow import keras
 from keras import layers, models
@@ -46,6 +47,7 @@ def jointlyGetMapAndSongFeats():
     mapFeats = []
     songFeats = []
     index = 0
+    mapCount = 0
     for dir in os.listdir(mainDir):
         mapFeats.append([])
         songFeats.append([])
@@ -54,18 +56,21 @@ def jointlyGetMapAndSongFeats():
             if ext == ".json":
                 id, onsets = jtf.jsonToFeats(os.path.join(mainDir, dir, item))
                 mapFeats[index].append([id, onsets])
+                mapCount += 1
             if ext == ".pkl":
                 file = open(os.path.join(mainDir, dir, item), 'rb')
                 data = pickle.load(file)
                 songFeats[index].append([item[:-4], data])  # the -4 removes ".pkl"
         index += 1
 
-    return mapFeats, songFeats
+    return mapFeats, songFeats, mapCount
 
-def prepareFeatsForModel(mapFeats, songFeats):
-    pMapFeats = []
-    pSongFeats = []
+max_sequence_length = 30000
+def prepareFeatsForModel(mapFeats, songFeats, mapCount):
+    pMapFeats = np.full((mapCount, max_sequence_length), -999)
+    pSongFeats = np.full((mapCount, max_sequence_length, 40), -999)
     idMap = -1
+    idSong = -1
     
     for i in range(len(mapFeats)):
         audioFrames = len(songFeats[i][0][1])
@@ -74,25 +79,40 @@ def prepareFeatsForModel(mapFeats, songFeats):
         for map in mapFeats[i]:
             # temp = 0
             idMap += 1
-            pMapFeats.append([])
             onsets = map[1]  # time in ms of objects in map
             hitIndex = 0  # index of hitObject in the map (listed in variable: onsets)
             groundTruth = 0  # whether there is an object in this frame
+            groundTruths = []
             for j in range(audioFrames * 10):  # for each millisecond
-                
+                if j / 10 >= max_sequence_length:
+                    break
                 if hitIndex < len(onsets) and int(onsets[hitIndex]) <= j:  # if there is a hit
                     hitIndex += 1
                     groundTruth = 1
                 if j % 10 == 9:  # at every 10 milliseconds we summarize the 10ms frame and reset
-                    pMapFeats[idMap].append(groundTruth)
+                    groundTruths.append(groundTruth)
                     # temp += groundTruth
                     groundTruth = 0
             # print(temp, "hits")
-        
+            for j in range(len(groundTruths), max_sequence_length):
+                groundTruths.append(-999)
+            # pMapFeats.append(tf.convert_to_tensor(groundTruths, dtype=tf.int32))
+            pMapFeats[idMap] = groundTruths
+
         #  number of maps using the same audio file
         songRepeats = len(mapFeats[i])   # for now I am neglecting the concern about multiple maps sharing a song beind dispersed between training and test sets
         for j in range(songRepeats):
-            pSongFeats.append(songFeats[i][0][1])
+            idSong += 1
+            # pSongFeats.append(tf.convert_to_tensor(songFeats[i][0][1], dtype=tf.int32))
+            trimmedSongFeats = songFeats[i][0][1][:min(len(songFeats[i][0][1]), max_sequence_length)]  # trim to max sequence length if applicable
+            pad = []
+            for k in range (max_sequence_length - len(trimmedSongFeats)):
+                # print("got in with", max_sequence_length - len(trimmedSongFeats))
+                pad.append(np.full((40), -999))
+            # print(pad)
+            if(len(pad) > 0):
+                trimmedSongFeats = np.vstack((trimmedSongFeats, pad))
+            pSongFeats[idSong] = trimmedSongFeats
 
     return pMapFeats, pSongFeats
 
@@ -126,9 +146,12 @@ def createModel(mapFeats, songFeats):
     print("compiled model")
 
 def createConvLSTM():
+    mapFeats, songFeats, count = jointlyGetMapAndSongFeats()
+    y, x = prepareFeatsForModel(mapFeats, songFeats, count)
     #nn = models.Sequential()
     # nn.add(layers.Conv3D(?, activation = 'relu', input_dim=?)) # 
     #nn.add(layers.Conv)
+    # print(np.shape(mapFeats[0][0]))
 
     # FULL CNN MODEL
     # convolutional layer with 10 filter kernels that are 7-wide in time and 3-wide in frequency. ReLU.
@@ -155,6 +178,18 @@ def createConvLSTM():
     conv1d_1_strides = 12   
     conv1d_filters = 4
     hidden_units = 24
+    padding_value = -999
+    seq_length_cap = 30000  # 30000 frames = 300 seconds = 5 minutes
+
+    # xpad = np.full((17, seq_length_cap, 3), fill_value=padding_value)
+    # for s, x in enumerate(songFeats):
+    #     seq_len = x.shape[0]
+    #     xpad[s, 0:seq_len, :] = x
+    # print(xpad)
+
+    x = x.reshape(len(x),len(x[0]),len(x[0][0]),1)  # 17, 30000, 40, 1
+    y = y.reshape(len(y),len(y[0]),1)   
+
     # Create Sequential Model ###########################################
     clear_session()
     model = Sequential()
@@ -166,13 +201,41 @@ def createConvLSTM():
     model.compile(optimizer=Adam(learning_rate=learning_rate))# loss=error_to_signal, metrics=[error_to_signal])
     print(model.summary())
 
-    print()
+
+    # indices = tf.range(start=0, limit=tf.shape(songFeats)[0], dtype=tf.int32)
+    # shuffled_indices = tf.random.shuffle(indices)
+
+    # X_random = tf.gather(songFeats, shuffled_indices)
+    # Y_random = tf.gather(mapFeats, shuffled_indices)
+    # songFeats = tf.convert_to_tensor(songFeats, dtype=tf.int32)
+    # x = songFeats.reshape(len(songFeats),1)
+
+    # mapFeats = np.asarray(mapFeats).astype('int32')
+    # y = mapFeats.reshape(len(mapFeats), 1)
+
+    test_size = 0.2
+    epochs = 5
+    batch_size = 3 # ?
+    # shuffled_indices = np.random.permutation(len(songFeats)) 
+    # X_random = tf.gather(songFeats, shuffled_indices)
+    # y_random = tf.gather(mapFeats, shuffled_indices)
+
+    # mapFeats = tf.ragged.constant(mapFeats)
+
+    model.fit(x, y, epochs=epochs, batch_size=batch_size, validation_split=test_size)
+    # model.fit(np.asarray(songFeats).astype('float32'), np.asarray(mapFeats).astype('float32'), epochs=epochs, batch_size=batch_size, validation_split=test_size)
+    #model.save('test_model.h5')
+
+    print("got to end")
 
 def basicModel():
     # mapFeats = getMapFeats()
     # songFeats = getSongFeats()  # array of [mels pkl title, mels pkl data] pairs, one per song folder
-    mapFeats, songFeats = jointlyGetMapAndSongFeats()
-    mapFeats, songFeats = prepareFeatsForModel(mapFeats, songFeats)
+    mapFeats, songFeats, totalMaps = jointlyGetMapAndSongFeats()
+    mapFeats, songFeats = prepareFeatsForModel(mapFeats, songFeats, totalMaps)
+
+    print(mapFeats.shape)
+    print(songFeats.shape)
     # mapFeats = sorted(mapFeats, key=lambda x: x[0])  # sort by id (makeshift title: song-mapper-diff)
     # songFeats = sorted(songFeats, key=lambda x: x[0])  # similar to above
     # no need to do above sorting with new implementation, they already line up.
@@ -180,8 +243,8 @@ def basicModel():
     # print(mapFeats[8][0][0])
     # print(songFeats[8][0][0])
 
-    for i in range(14):
-        print(len(mapFeats[i]), len(songFeats[i]))
+    # for i in range(14):
+    #     print(len(mapFeats[i]), len(songFeats[i]))
     # print(songFeats[0][0][1].shape)
     # createConvLSTM()
 
@@ -191,5 +254,5 @@ def basicModel():
     # print()
     # print(songFeats[0][1].shape)
 
-basicModel()
-# createConvLSTM()
+# basicModel()
+createConvLSTM()

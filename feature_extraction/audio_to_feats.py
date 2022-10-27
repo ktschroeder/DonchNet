@@ -24,7 +24,7 @@ def makeFeats(file, targetDir, songFolder):  # './sample_maps/1061593 katagiri -
     from scipy.fftpack import dct
 
     sample_rate, signal = scipy.io.wavfile.read(file)  # TODO .mp3/.ogg files, also inconsistent bitrates? Probably best to pre-process, convert all to .wav. Manage bitrates?
-    # signal = signal[0:int(1 * sample_rate)]  # Keep the first 1 seconds
+    # signal = signal[0:int(30 * sample_rate)]  # Keep the first 30 seconds
     #
     pre_emphasis = 0.97
     # emphasized_signal = numpy.append(signal[0], signal[1:] - pre_emphasis * signal[:-1])  # original line, this doubles length of signal, seemingly in error perhaps for testing
