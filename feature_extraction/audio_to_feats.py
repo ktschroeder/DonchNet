@@ -24,12 +24,23 @@ def makeFeats(file, targetDir, songFolder):  # './sample_maps/1061593 katagiri -
     from scipy.fftpack import dct
 
     sample_rate, signal = scipy.io.wavfile.read(file)  # TODO .mp3/.ogg files, also inconsistent bitrates? Probably best to pre-process, convert all to .wav. Manage bitrates?
-    # signal = signal[0:int(30 * sample_rate)]  # Keep the first 30 seconds
+    signal = signal[0:int(120 * sample_rate)]  # Keep the first 120 seconds
     #
     pre_emphasis = 0.97
+    signalLength = len(signal)
     # emphasized_signal = numpy.append(signal[0], signal[1:] - pre_emphasis * signal[:-1])  # original line, this doubles length of signal, seemingly in error perhaps for testing
-    # emphasized_signal = numpy.append(signal[0], signal[1:] - pre_emphasis * signal[:-1])  # my modified line
-    emphasized_signal = signal  # see article but can maybe just skip this anyway
+    emphasized_signal = numpy.append(signal[0:1], signal[1:] - pre_emphasis * signal[:-1])  # my modified line
+
+    emphasized_signal = signal
+    emphasized_signal[1:] = signal[1:] - pre_emphasis * signal[:-1]
+
+    # print(len(signal[0]))
+    # print(len(signal[1:] - pre_emphasis * signal[:-1]))
+
+    # print(signalLength, len(emphasized_signal))
+    assert len(emphasized_signal) == signalLength
+    # assert 1 == 0
+    # emphasized_signal = signal  # see article but can maybe just skip this anyway
     #
     frame_size = 0.025  # 25 ms
     frame_stride = 0.01  # 10 ms (15 ms overlap)
@@ -82,7 +93,7 @@ def makeFeats(file, targetDir, songFolder):  # './sample_maps/1061593 katagiri -
 
     mfcc = dct(filter_banks, type=2, axis=1, norm='ortho')[:, 1 : (num_ceps + 1)] # Keep 2-13
 
-    cep_lifter = 2  # TODO value not given
+    cep_lifter = 22
     (nframes, ncoeff) = mfcc.shape
     n = numpy.arange(ncoeff)
     lift = 1 + (cep_lifter / 2) * numpy.sin(numpy.pi * n / cep_lifter)

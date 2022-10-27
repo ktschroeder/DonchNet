@@ -65,7 +65,7 @@ def jointlyGetMapAndSongFeats():
 
     return mapFeats, songFeats, mapCount
 
-max_sequence_length = 30000
+max_sequence_length = 12000
 def prepareFeatsForModel(mapFeats, songFeats, mapCount):
     pMapFeats = np.full((mapCount, max_sequence_length), -500)
     pSongFeats = np.full((mapCount, max_sequence_length, 40), -500)
@@ -179,8 +179,8 @@ def createConvLSTM():
     conv1d_1_strides = 12   
     conv1d_filters = 4
     hidden_units = 12
-    padding_value = -999
-    seq_length_cap = 30000  # 30000 frames = 300 seconds = 5 minutes
+    # padding_value = -999
+    # seq_length_cap = 30000  # 30000 frames = 300 seconds = 5 minutes
 
     # xpad = np.full((17, seq_length_cap, 3), fill_value=padding_value)
     # for s, x in enumerate(songFeats):
@@ -193,25 +193,31 @@ def createConvLSTM():
     x = reshape(x, (len(x), len(x[0]), len(x[0][0]), 1,1))  # 17, 30000, 40, 1
     y = y.reshape((len(y),len(y[0]),1,1))   
     x = x.astype(float32)
+
+    # x = reshape(x, (len(x), 100, len(x[0][0]), 1,1))  # 17, 100, 40, 1
+    # y = y.reshape((len(y), 100 ,1,1))   
+    # x = x.astype(float32)
     
+    print(x.shape, y.shape)
 
     # Create Sequential Model ###########################################
     clear_session()
     model = Sequential()
-    model.add(TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',input_shape=(25,40,1,1)))) # shape is 12+1+12 frames x 40 frequency bands
+    model.add(TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',input_shape=(25,40,1,1),data_format='channels_first'))) # shape is 12+1+12 frames x 40 frequency bands x 1 row x 1 col
     model.add(TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same')))
-    model.add(TimeDistributed(Conv2D(20, (7,3),activation='relu', padding='same')))
+    model.add(TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same')))
     model.add(TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same')))
     model.add(TimeDistributed(Flatten())) # see above notes, does this overly flatten temporal?
     model.add(LSTM(hidden_units))
-    model.add(Dense(20, activation='relu'))
-    model.add(Dense(20, activation='relu'))
+    model.add(Dense(256, activation='relu'))
+    model.add(Dense(128, activation='relu'))
     
     model.compile(optimizer=Adam(learning_rate=learning_rate), loss='binary_crossentropy')# loss=error_to_signal, metrics=[error_to_signal])
     
     test_size = 0.2
-    epochs = 10
-    batch_size = 5 # ? decreasing this from total map count makes more parts per epoch. (frequently weights are updated)
+    epochs = 1
+    batch_size = 25 # ? decreasing this from total map count makes more parts per epoch. (frequently weights are updated)
+    # batch size of 1 runs okay. Recently larger numbers crash (exceeding mem?). 5 throws CUDNN_STATUS_NOT_SUPPORTED, 50 throws plain mem error (OOM)
 
     print(x.shape, y.shape)
     print("begin fit")
