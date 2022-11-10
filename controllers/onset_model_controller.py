@@ -29,7 +29,7 @@ import config
 
 # os.environ["TF_GPU_ALLOCATOR"]="cuda_malloc_async"  #"If the cause is memory fragmentation maybe the environment variable 'TF_GPU_ALLOCATOR=cuda_malloc_async' will improve the situation."
 #Hint: If you want to see a list of allocated tensors when OOM happens, add report_tensor_allocations_upon_oom to RunOptions for current allocation info. This isn't available when running in Eager mode.
-
+# tf.compat.v1.enable_eager_execution()
 
 # mapFeats = []
 # songFeats = []
@@ -180,7 +180,7 @@ def prepareFeatsForModel(mapFeats, songFeats, mapCount):
     pSongFeats = np.full((mapCount, max_sequence_length, 40), -500)
     idMap = -1
     idSong = -1
-    starRatings = np.empty(mapCount, dtype=float)
+    starRatings = np.empty(mapCount, dtype=float32)
     
     for i in range(len(mapFeats)):
         audioFrames = len(songFeats[i][0][1])
@@ -208,7 +208,7 @@ def prepareFeatsForModel(mapFeats, songFeats, mapCount):
                 groundTruths.append(0) # TODO this was -999, could be -1. 0 okay?
             # pMapFeats.append(tf.convert_to_tensor(groundTruths, dtype=tf.int32))
             pMapFeats[idMap] = groundTruths
-            starRatings[idMap] = float(map[2])  # star rating of map (difficulty)
+            starRatings[idMap] = float32(map[2])  # star rating of map (difficulty)
 
         #  number of maps using the same audio file
         songRepeats = len(mapFeats[i])   # for now I am neglecting the concern about multiple maps sharing a song beind dispersed between training and test sets
@@ -310,7 +310,9 @@ def createConvLSTM():
     # y = y.reshape((len(y), 100 ,1,1))   
     # x = x.astype(float32)
     
+    x = x.reshape((len(x), len(x[0]), 1, 1, len(x[0][0])))
     print(x.shape, y.shape)
+
 
     # Create Sequential Model ###########################################
     clear_session()
@@ -330,7 +332,39 @@ def createConvLSTM():
     # model.add(Dropout(0.5)) 
 
     input = tf.keras.Input(shape=(max_sequence_length,40,1,1))
-    base_maps = TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',input_shape=(25,40,1,1),data_format='channels_first'))(input) # TODO is 25 being scanned corectly?
+
+    def context(x):
+        padding = np.full((1,1,40), -500, dtype=float32)
+        context = 7
+        window = 2*context + 1 # prepend and append context
+        # want to create input_shape=(max_sequence_length,15,1,40) from (max_sequence_length, 1, 1, 40)
+        out = np.zeros((max_sequence_length,window,1,40))
+        for i in range (max_sequence_length):
+            bookended = np.zeros((window,1,40), dtype=float32)
+            for j in range (context*-1, context+1):
+                indexToGet = i + j  # if at start of audio this is negative in first half, if at end this is out of bounds positive in second half
+                if indexToGet < 0 or indexToGet >= max_sequence_length:
+                    bookended[j + context] = padding
+                else:
+                    sess = tf.compat.v1.Session()
+                    with sess.as_default():
+                        temp = x[i + j]
+                        eval = temp.eval()
+                        bookended[j + context] = eval  # if all esle fails then just do this in audio processing. will use 14x more storage.
+                        
+                        # bookended[j + context] = x[i + j].eval()
+            out[i] = bookended
+        tensor_out = tf.constant(out)
+        return out
+
+            
+
+        
+
+    
+
+    base_maps = tf.keras.layers.Lambda(context)(input)
+    base_maps = TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',data_format='channels_last'))(base_maps) # TODO is 25 being scanned corectly?
     base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
     base_maps = TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same'))(base_maps)
     base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
@@ -348,7 +382,7 @@ def createConvLSTM():
  #   merged = tf.keras.layers.Concatenate()([base_maps, starRatingFeat])
 
     base_maps = LSTM(hidden_units, return_sequences=True, input_shape=(25,200))(base_maps)#(merged)
-    base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units))(base_maps)  # is this shape correct?
+    base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units))(base_maps)  # is this shape correct? TODO fix
     base_maps = LSTM(hidden_units, return_sequences=True)(base_maps)  # TODO do we want return_sequences again, really?
     base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units))(base_maps) 
     base_maps = Dense(256, activation='relu')(base_maps)
