@@ -39,10 +39,14 @@ from misc_tools import slugify
 def jointlyMakeJsonsAndMels():
     mainDir = "C:/Users/Admin/Documents/medium_taiko_dataset"  # TODO temporary
     tempWavDir = "data/temp/temp.wav"
+    if not os.path.exists("data"):
+        os.makedirs("data")
     if not os.path.exists("data/temp"):
         os.makedirs("data/temp")
     if not os.path.exists("data/stored_feats"):
         os.makedirs("data/stored_feats")
+    if not os.path.exists("data/holdout_feats"):
+        os.makedirs("data/holdout_feats")
 
     processedAudios = 0
     for songFolder in os.listdir(mainDir):  # first make JSONs and get JSON info for ID that will be used in creating mels
@@ -82,6 +86,9 @@ def jointlyMakeJsonsAndMels():
                     print(f"Processed {processedAudios} audios...")
             # if ext == ".wav":
             #     atf.makeFeats(os.path.join(mainDir, songFolder, item), newDir, songFolder)
+
+            if processedAudios > 30:
+                break
     print("Finished making feats")
 
 jointlyMakeJsonsAndMels()

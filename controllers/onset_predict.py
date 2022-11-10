@@ -3,9 +3,10 @@ import numpy as np
 from numpy import *
 import pickle
 # import keras.models
+import config
 
 def makePredictionFromAudio(model, audioFile):
-    max_sequence_length = 12000
+    max_sequence_length = config.audioLengthMaxSeconds * 100  # 100 frames per second, or 10 ms per frame
 
     audioFeats = atf.makeFeats(audioFile)  # assumes this is a WAV file already
     pSongFeats = np.full((1, max_sequence_length, 40), -500)

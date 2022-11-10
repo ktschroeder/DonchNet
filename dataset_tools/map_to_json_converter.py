@@ -1,4 +1,5 @@
 import json, os, unicodedata, re
+import SR_calculator
 
 def makeSafeFilename(name):  # taken from Django's slugify function
     # Normalizes string, converts to lowercase, removes non-alpha characters, and converts spaces to underscores.
@@ -91,6 +92,9 @@ def mapToJson(file, targetDir, enc="utf8"):  # "C:/Users/Admin/Documents/GitHub/
                 object['spinnerEnd'] = item[5]
             
             out['hitobjects'].append(object)
+
+    stars = SR_calculator.calculateSR(file)
+    out['sr'] = stars
 
     output = json.dumps(out).replace('\n','')
     dest = os.path.join(targetDir, makeSafeFilename(out["metadata"]["Title"].strip()[:20]) + '-' + makeSafeFilename(out["metadata"]["Creator"].strip()[:20]) + '-' + makeSafeFilename(out["metadata"]["Version"].strip()[:20]) + '.json')

@@ -1,5 +1,6 @@
 import os, pickle
 import unicodedata, re
+import config
 
 
 def makeSafeFilename(name):  # taken from Django's slugify function
@@ -24,7 +25,7 @@ def makeFeats(file, targetDir = None, songFolder = None):  # './sample_maps/1061
     from scipy.fftpack import dct
 
     sample_rate, signal = scipy.io.wavfile.read(file)  # TODO .mp3/.ogg files, also inconsistent bitrates? Probably best to pre-process, convert all to .wav. Manage bitrates?
-    signal = signal[0:int(120 * sample_rate)]  # Keep the first 120 seconds
+    signal = signal[0:int(config.audioLengthMaxSeconds * sample_rate)]  # Keep the first audioLengthMaxSeconds seconds
     #
     pre_emphasis = 0.97
     signalLength = len(signal)

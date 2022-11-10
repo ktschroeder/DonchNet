@@ -20,6 +20,8 @@ import tensorflow.keras.backend as K
 from tensorflow.keras.utils import Sequence
 from tensorflow.keras.optimizers import Optimizer
 
+import config
+
 
 # import runai.ga.keras
 
@@ -173,7 +175,7 @@ def jointlyGetMapAndSongFeats():
 
     return mapFeats, songFeats, mapCount
 
-max_sequence_length = 12000
+max_sequence_length = config.audioLengthMaxSeconds * 100  # 100 frames per second, or 10 ms per frame
 def prepareFeatsForModel(mapFeats, songFeats, mapCount):
     pMapFeats = np.full((mapCount, max_sequence_length), -500)
     pSongFeats = np.full((mapCount, max_sequence_length, 40), -500)
@@ -325,7 +327,7 @@ def createConvLSTM():
     model.add(Dense(128, activation='relu'))
     model.add(Dropout(0.5)) 
 
-    input = tf.keras.Input(shape=(12000,40,1,1))
+    input = tf.keras.Input(shape=(max_sequence_length,40,1,1))
     base_maps = TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',input_shape=(25,40,1,1),data_format='channels_first'))(input)
     base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
     base_maps = TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same'))(base_maps)
