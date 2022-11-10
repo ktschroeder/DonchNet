@@ -18,7 +18,7 @@ def makeSafeFilename(name):  # taken from Django's slugify function
 #       year    = "2016",
 #       url     = "https://haythamfayek.com/2016/04/21/speech-processing-for-machine-learning.html"
 #     }
-def makeFeats(file, targetDir, songFolder):  # './sample_maps/1061593 katagiri - Urushi/audio.wav'
+def makeFeats(file, targetDir = None, songFolder = None):  # './sample_maps/1061593 katagiri - Urushi/audio.wav'
     import numpy
     import scipy.io.wavfile
     from scipy.fftpack import dct
@@ -104,6 +104,10 @@ def makeFeats(file, targetDir, songFolder):  # './sample_maps/1061593 katagiri -
     mfcc -= (numpy.mean(mfcc, axis=0) + 1e-8)  # TODO one thing to test in model will be mel bands versus mfcc
     #
     # title, diff = getTitleAndDiff(songFolder, jsons)
+    
+    if not targetDir:  # if no target directory then return the actual filter banks
+        return filter_banks
+
     filepath = os.path.join(targetDir, songFolder) + '.pkl'
     with open(filepath, 'wb') as f:
         pickle.dump(filter_banks, f)

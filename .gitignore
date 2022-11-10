@@ -1,5 +1,7 @@
 data/json/*
 data/mels/*
 data/stored_feats/*
+data/holdout_feats/*
+models/*
 */__pycache__
 __pycache__
