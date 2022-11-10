@@ -8,8 +8,7 @@ import numpy as np
 from numpy import *
 import tensorflow as tf
 from tensorflow import keras
-from keras import layers, models
-import tensorflow as tf
+# from keras import layers, models
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import LSTM, Conv2D, Dense, Flatten, TimeDistributed, MaxPool2D, Dropout
 from tensorflow.keras.optimizers import Adam
@@ -137,8 +136,8 @@ def getMapFeats():
         for item in os.listdir(os.path.join(mainDir, dir)):
             ext = os.path.splitext(item)[-1].lower()
             if ext == ".json":
-                id, offsets = jtf.jsonToFeats(os.path.join(mainDir, dir, item))
-                mapFeats.append([id, offsets])
+                id, offsets, sr = jtf.jsonToFeats(os.path.join(mainDir, dir, item))
+                mapFeats.append([id, offsets, sr])
     return mapFeats
 
 def getSongFeats():
@@ -164,8 +163,8 @@ def jointlyGetMapAndSongFeats():
         for item in os.listdir(os.path.join(mainDir, dir)):
             ext = os.path.splitext(item)[-1].lower()
             if ext == ".json":
-                id, onsets = jtf.jsonToFeats(os.path.join(mainDir, dir, item))
-                mapFeats[index].append([id, onsets])
+                id, onsets, sr = jtf.jsonToFeats(os.path.join(mainDir, dir, item))
+                mapFeats[index].append([id, onsets, sr])
                 mapCount += 1
             if ext == ".pkl":
                 file = open(os.path.join(mainDir, dir, item), 'rb')
@@ -181,6 +180,7 @@ def prepareFeatsForModel(mapFeats, songFeats, mapCount):
     pSongFeats = np.full((mapCount, max_sequence_length, 40), -500)
     idMap = -1
     idSong = -1
+    starRatings = np.empty(mapCount, dtype=float)
     
     for i in range(len(mapFeats)):
         audioFrames = len(songFeats[i][0][1])
@@ -208,6 +208,7 @@ def prepareFeatsForModel(mapFeats, songFeats, mapCount):
                 groundTruths.append(0) # TODO this was -999, could be -1. 0 okay?
             # pMapFeats.append(tf.convert_to_tensor(groundTruths, dtype=tf.int32))
             pMapFeats[idMap] = groundTruths
+            starRatings[idMap] = float(map[2])  # star rating of map (difficulty)
 
         #  number of maps using the same audio file
         songRepeats = len(mapFeats[i])   # for now I am neglecting the concern about multiple maps sharing a song beind dispersed between training and test sets
@@ -224,7 +225,7 @@ def prepareFeatsForModel(mapFeats, songFeats, mapCount):
                 trimmedSongFeats = np.vstack((trimmedSongFeats, pad))
             pSongFeats[idSong] = trimmedSongFeats
 
-    return pMapFeats, pSongFeats
+    return pMapFeats, pSongFeats, starRatings
 
 # def createModel(mapFeats, songFeats):
 #     # model = keras.Sequential()
@@ -258,7 +259,7 @@ def prepareFeatsForModel(mapFeats, songFeats, mapCount):
 def createConvLSTM():
     mapFeats, songFeats, count = jointlyGetMapAndSongFeats()
     print(count, "maps total")
-    y, x = prepareFeatsForModel(mapFeats, songFeats, count)
+    y, x, starRatings = prepareFeatsForModel(mapFeats, songFeats, count)
     #nn = models.Sequential()
     # nn.add(layers.Conv3D(?, activation = 'relu', input_dim=?)) # 
     #nn.add(layers.Conv)
@@ -303,6 +304,7 @@ def createConvLSTM():
     x = reshape(x, (len(x), len(x[0]), len(x[0][0]), 1,1))  # 17, 30000, 40, 1
     y = y.reshape((len(y),len(y[0]),1,1))   
     x = x.astype(float32)
+    starRatings = starRatings.reshape((len(starRatings), 1, 1))
 
     # x = reshape(x, (len(x), 100, len(x[0][0]), 1,1))  # 17, 100, 40, 1
     # y = y.reshape((len(y), 100 ,1,1))   
@@ -312,28 +314,40 @@ def createConvLSTM():
 
     # Create Sequential Model ###########################################
     clear_session()
-    model = Sequential()
-    model.add(TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',input_shape=(25,40,1,1),data_format='channels_first'))) # shape is 12+1+12 frames x 40 frequency bands x 1 row x 1 col
-    model.add(TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same')))
-    model.add(TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same')))
-    model.add(TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same')))
-    model.add(TimeDistributed(Flatten())) # see above notes, does this overly flatten temporal?
-    model.add(LSTM(hidden_units, return_sequences=True))
-    model.add(Dropout(0.5, noise_shape=(None,1,hidden_units)))  # is this shape correct?
-    model.add(LSTM(hidden_units, return_sequences=True))  # TODO do we want return_sequences again, really?
-    model.add(Dropout(0.5, noise_shape=(None,1,hidden_units))) 
-    model.add(Dense(256, activation='relu'))
-    model.add(Dropout(0.5)) 
-    model.add(Dense(128, activation='relu'))
-    model.add(Dropout(0.5)) 
+    # model = Sequential()
+    # model.add(TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',input_shape=(25,40,1,1),data_format='channels_first'))) # shape is 12+1+12 frames x 40 frequency bands x 1 row x 1 col
+    # model.add(TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same')))
+    # model.add(TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same')))
+    # model.add(TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same')))
+    # model.add(TimeDistributed(Flatten())) # see above notes, does this overly flatten temporal?
+    # model.add(LSTM(hidden_units, return_sequences=True))
+    # model.add(Dropout(0.5, noise_shape=(None,1,hidden_units)))  # is this shape correct?
+    # model.add(LSTM(hidden_units, return_sequences=True))  # TODO do we want return_sequences again, really?
+    # model.add(Dropout(0.5, noise_shape=(None,1,hidden_units))) 
+    # model.add(Dense(256, activation='relu'))
+    # model.add(Dropout(0.5)) 
+    # model.add(Dense(128, activation='relu'))
+    # model.add(Dropout(0.5)) 
 
     input = tf.keras.Input(shape=(max_sequence_length,40,1,1))
-    base_maps = TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',input_shape=(25,40,1,1),data_format='channels_first'))(input)
+    base_maps = TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',input_shape=(25,40,1,1),data_format='channels_first'))(input) # TODO is 25 being scanned corectly?
     base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
     base_maps = TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same'))(base_maps)
     base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
     base_maps = TimeDistributed(Flatten())(base_maps) # see above notes, does this overly flatten temporal?
-    base_maps = LSTM(hidden_units, return_sequences=True)(base_maps)
+
+    # sequence = tf.keras.Input(shape=(max_sequence_length, hidden_units))  # TODO core issue? is this shape sane? Is LSTM getting entire length of audio at once?
+    # part1 = base_maps(sequence)
+
+    # base_maps = tf.keras.Input(shape=(max_sequence_length, hidden_units))(base_maps)
+
+ #   starRatingFeat = tf.keras.Input(shape=(1, 1))
+
+    # merged = concatenate([base_maps, starRatingFeat])
+
+ #   merged = tf.keras.layers.Concatenate()([base_maps, starRatingFeat])
+
+    base_maps = LSTM(hidden_units, return_sequences=True, input_shape=(25,200))(base_maps)#(merged)
     base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units))(base_maps)  # is this shape correct?
     base_maps = LSTM(hidden_units, return_sequences=True)(base_maps)  # TODO do we want return_sequences again, really?
     base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units))(base_maps) 
@@ -344,19 +358,22 @@ def createConvLSTM():
 
     base_maps = Dense(1, activation='sigmoid')(base_maps)
 
-    epochs = 150
+    epochs = 1
     gradients_per_update = 4  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
-    batch_size = 20
+    batch_size = 10
 
     ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input], outputs=[base_maps])
+#   ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input, starRatingFeat], outputs=[base_maps])
 
     # bind all
     ga_model.compile(  #ga for gradient accumulation
         loss = 'binary_crossentropy',
         # metrics = ['accuracy'],
-        optimizer = keras.optimizers.SGD(momentum=0.01, nesterov=True, learning_rate=learning_rate) )
+        optimizer = tf.keras.optimizers.SGD(momentum=0.01, nesterov=True, learning_rate=learning_rate),
+        metrics = tf.keras.metrics.AUC(curve='PR') )
 
-    history = ga_model.fit(x, y, batch_size=batch_size, epochs=epochs, verbose=1, validation_split=0.2)
+    history = ga_model.fit(x, y, batch_size=batch_size, epochs=epochs, verbose=1, validation_split=0.2, )
+#   history = ga_model.fit([x, starRatings], y, batch_size=batch_size, epochs=epochs, verbose=1, validation_split=0.2, )
     print(ga_model.summary())
 
     
@@ -421,14 +438,14 @@ def createConvLSTM():
 
     print("got to end")
 
-def basicModel():
+# def basicModel():
     # mapFeats = getMapFeats()
     # songFeats = getSongFeats()  # array of [mels pkl title, mels pkl data] pairs, one per song folder
-    mapFeats, songFeats, totalMaps = jointlyGetMapAndSongFeats()
-    mapFeats, songFeats = prepareFeatsForModel(mapFeats, songFeats, totalMaps)
+    # mapFeats, songFeats, totalMaps = jointlyGetMapAndSongFeats()
+    # mapFeats, songFeats = prepareFeatsForModel(mapFeats, songFeats, totalMaps)
 
-    print(mapFeats.shape)
-    print(songFeats.shape)
+    # print(mapFeats.shape)
+    # print(songFeats.shape)
     # mapFeats = sorted(mapFeats, key=lambda x: x[0])  # sort by id (makeshift title: song-mapper-diff)
     # songFeats = sorted(songFeats, key=lambda x: x[0])  # similar to above
     # no need to do above sorting with new implementation, they already line up.
@@ -454,7 +471,7 @@ def basicModel():
 
 createConvLSTM()
 
-model = keras.models.load_model("models/onset")
+model = tf.keras.models.load_model("models/onset")
 audioFile = "sample_maps/1061593 katagiri - Urushi/audio.wav"
 name = "Urushi"
 prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFile) #TODO

@@ -95,8 +95,10 @@ def mapToJson(file, targetDir, enc="utf8"):  # "C:/Users/Admin/Documents/GitHub/
 
     stars = SR_calculator.calculateSR(file)
     out['sr'] = stars
+    assert(out['sr'])
 
     output = json.dumps(out).replace('\n','')
+    
     dest = os.path.join(targetDir, makeSafeFilename(out["metadata"]["Title"].strip()[:20]) + '-' + makeSafeFilename(out["metadata"]["Creator"].strip()[:20]) + '-' + makeSafeFilename(out["metadata"]["Version"].strip()[:20]) + '.json')
    
     with open(dest,'w') as file:

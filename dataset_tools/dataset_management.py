@@ -86,9 +86,6 @@ def jointlyMakeJsonsAndMels():
                     print(f"Processed {processedAudios} audios...")
             # if ext == ".wav":
             #     atf.makeFeats(os.path.join(mainDir, songFolder, item), newDir, songFolder)
-
-            if processedAudios > 30:
-                break
     print("Finished making feats")
 
 jointlyMakeJsonsAndMels()

@@ -15,5 +15,7 @@ def jsonToFeats(file):
     # songName = j["metadata"]["Title"].strip()
     # mapper = j["metadata"]["Creator"].strip()
     # diffName = j["metadata"]["Version"].strip()
+    sr = j["sr"]
+    
     id = makeSafeFilename(j["metadata"]["Title"].strip()) + '-' + makeSafeFilename(j["metadata"]["Creator"].strip()) + '-' + makeSafeFilename(j["metadata"]["Version"].strip())
-    return id, onsets
+    return id, onsets, sr
