@@ -1,6 +1,8 @@
 import os, pickle
 import unicodedata, re
 import config
+import numpy as np
+from numpy import *
 
 
 def makeSafeFilename(name):  # taken from Django's slugify function
@@ -9,6 +11,24 @@ def makeSafeFilename(name):  # taken from Django's slugify function
     name = re.sub(r'[^\w\s-]', '', name.lower())
     return re.sub(r'[-\s]+', '_', name).strip('-_')
 
+def addContext(x):
+    # x.reshape(())   (config.audioLengthMaxSeconds, 40)?
+
+    padding = np.full((1,40), -500, dtype=float32)
+    context = 7
+    window = 2*context + 1 # prepend and append context
+    # want to create input_shape=(max_sequence_length,15,40) from (max_sequence_length, 40)
+    out = np.zeros((len(x),window,40))
+    for i in range (len(x)):
+        bookended = np.zeros((window,40), dtype=float32)
+        for j in range (context*-1, context+1):
+            indexToGet = i + j  # if at start of audio this is negative in first half, if at end this is out of bounds positive in second half
+            if indexToGet < 0 or indexToGet >= len(x):
+                bookended[j + context] = padding
+            else:
+                bookended[j + context] = x[i + j]  # TODO this implementation uses 14x more storage than perhaps necessary (but will speed up training over time)
+        out[i] = bookended
+    return out
 
 
 
@@ -105,6 +125,8 @@ def makeFeats(file, targetDir = None, songFolder = None):  # './sample_maps/1061
     mfcc -= (numpy.mean(mfcc, axis=0) + 1e-8)  # TODO one thing to test in model will be mel bands versus mfcc
     #
     # title, diff = getTitleAndDiff(songFolder, jsons)
+
+    filter_banks = addContext(filter_banks)  # new shape is (max_sequence_length,15,40)
     
     if not targetDir:  # if no target directory then return the actual filter banks
         return filter_banks

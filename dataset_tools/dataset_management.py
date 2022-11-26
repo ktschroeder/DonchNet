@@ -37,7 +37,7 @@ from misc_tools import slugify
 #makeMels()
 
 def jointlyMakeJsonsAndMels():
-    mainDir = "C:/Users/Admin/Documents/medium_taiko_dataset"  # TODO temporary
+    mainDir = "C:/Users/Admin/Documents/small_taiko_dataset"  # TODO temporary
     tempWavDir = "data/temp/temp.wav"
     if not os.path.exists("data"):
         os.makedirs("data")

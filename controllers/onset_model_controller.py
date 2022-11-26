@@ -176,8 +176,8 @@ def jointlyGetMapAndSongFeats():
 
 max_sequence_length = config.audioLengthMaxSeconds * 100  # 100 frames per second, or 10 ms per frame
 def prepareFeatsForModel(mapFeats, songFeats, mapCount):
-    pMapFeats = np.full((mapCount, max_sequence_length), -500)
-    pSongFeats = np.full((mapCount, max_sequence_length, 40), -500)
+    pMapFeats = np.full((mapCount, max_sequence_length), -500)  # TODO is -500 appropriate here?
+    pSongFeats = np.full((mapCount, max_sequence_length, 15, 40), -500)  # incoming as (mapCount, max_sequence_length,15,40)
     idMap = -1
     idSong = -1
     starRatings = np.empty(mapCount, dtype=float32)
@@ -215,11 +215,14 @@ def prepareFeatsForModel(mapFeats, songFeats, mapCount):
         for j in range(songRepeats):
             idSong += 1
             # pSongFeats.append(tf.convert_to_tensor(songFeats[i][0][1], dtype=tf.int32))
+
+            #TODO if issue, return to this earlier note: continue here. below trimming is incorrect and only gets one frame instead of 15 frames of context.
+             
             trimmedSongFeats = songFeats[i][0][1][:min(len(songFeats[i][0][1]), max_sequence_length)]  # trim to max sequence length if applicable
             pad = []
             for k in range (max_sequence_length - len(trimmedSongFeats)):
                 # print("got in with", max_sequence_length - len(trimmedSongFeats))
-                pad.append(np.full((40), -500))
+                pad.append(np.full((15,40), -500))
             # print(pad)
             if(len(pad) > 0):
                 trimmedSongFeats = np.vstack((trimmedSongFeats, pad))
@@ -299,10 +302,11 @@ def createConvLSTM():
     #     xpad[s, 0:seq_len, :] = x
     # print(xpad)
 
-    print(x.shape, y.shape)
+    print(x.shape, y.shape, starRatings.shape)  # currently (17, 24000, 15, 40) (17, 24000) (17,)
+    
 
-    x = reshape(x, (len(x), len(x[0]), len(x[0][0]), 1,1))  # 17, 30000, 40, 1
-    y = y.reshape((len(y),len(y[0]),1,1))   
+    x = reshape(x, (len(x), len(x[0]), len(x[0][0]), len(x[0][0][0]),1))  # 17, 24000, 15, 40, 1
+    y = y.reshape((len(y),len(y[0]),1,1))
     x = x.astype(float32)
     starRatings = starRatings.reshape((len(starRatings), 1, 1))
 
@@ -310,7 +314,7 @@ def createConvLSTM():
     # y = y.reshape((len(y), 100 ,1,1))   
     # x = x.astype(float32)
     
-    x = x.reshape((len(x), len(x[0]), 1, 1, len(x[0][0])))
+    x = x.reshape((len(x), len(x[0]), 1, len(x[0][0]), len(x[0][0][0])))  # 17, 24000, 1, 15, 40
     print(x.shape, y.shape)
 
 
@@ -331,31 +335,31 @@ def createConvLSTM():
     # model.add(Dense(128, activation='relu'))
     # model.add(Dropout(0.5)) 
 
-    input = tf.keras.Input(shape=(max_sequence_length,40,1,1))
+    input = tf.keras.Input(shape=(max_sequence_length,1,15,40))
 
-    def context(x):
-        padding = np.full((1,1,40), -500, dtype=float32)
-        context = 7
-        window = 2*context + 1 # prepend and append context
-        # want to create input_shape=(max_sequence_length,15,1,40) from (max_sequence_length, 1, 1, 40)
-        out = np.zeros((max_sequence_length,window,1,40))
-        for i in range (max_sequence_length):
-            bookended = np.zeros((window,1,40), dtype=float32)
-            for j in range (context*-1, context+1):
-                indexToGet = i + j  # if at start of audio this is negative in first half, if at end this is out of bounds positive in second half
-                if indexToGet < 0 or indexToGet >= max_sequence_length:
-                    bookended[j + context] = padding
-                else:
-                    sess = tf.compat.v1.Session()
-                    with sess.as_default():
-                        temp = x[i + j]
-                        eval = temp.eval()
-                        bookended[j + context] = eval  # if all esle fails then just do this in audio processing. will use 14x more storage.
+    # def context(x):
+    #     padding = np.full((1,1,40), -500, dtype=float32)
+    #     context = 7
+    #     window = 2*context + 1 # prepend and append context
+    #     # want to create input_shape=(max_sequence_length,15,1,40) from (max_sequence_length, 1, 1, 40)
+    #     out = np.zeros((max_sequence_length,window,1,40))
+    #     for i in range (max_sequence_length):
+    #         bookended = np.zeros((window,1,40), dtype=float32)
+    #         for j in range (context*-1, context+1):
+    #             indexToGet = i + j  # if at start of audio this is negative in first half, if at end this is out of bounds positive in second half
+    #             if indexToGet < 0 or indexToGet >= max_sequence_length:
+    #                 bookended[j + context] = padding
+    #             else:
+    #                 sess = tf.compat.v1.Session()
+    #                 with sess.as_default():
+    #                     temp = x[i + j]
+    #                     eval = temp.eval()
+    #                     bookended[j + context] = eval  # if all else fails then just do this in audio processing. will use 14x more storage.
                         
-                        # bookended[j + context] = x[i + j].eval()
-            out[i] = bookended
-        tensor_out = tf.constant(out)
-        return out
+    #                     # bookended[j + context] = x[i + j].eval()
+    #         out[i] = bookended
+    #     tensor_out = tf.constant(out)
+    #     return out
 
             
 
@@ -363,10 +367,10 @@ def createConvLSTM():
 
     
 
-    base_maps = tf.keras.layers.Lambda(context)(input)
-    base_maps = TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',data_format='channels_last'))(base_maps) # TODO is 25 being scanned corectly?
+    # base_maps = tf.keras.layers.Lambda(context)(input)
+    base_maps = TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',data_format='channels_last'))(input) # TODO is 25 being scanned corectly?
     base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
-    base_maps = TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same'))(base_maps)
+    base_maps = TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same',data_format='channels_last'))(base_maps)
     base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
     base_maps = TimeDistributed(Flatten())(base_maps) # see above notes, does this overly flatten temporal?
 
@@ -381,10 +385,10 @@ def createConvLSTM():
 
  #   merged = tf.keras.layers.Concatenate()([base_maps, starRatingFeat])
 
-    base_maps = LSTM(hidden_units, return_sequences=True, input_shape=(25,200))(base_maps)#(merged)
+    base_maps = LSTM(hidden_units, return_sequences=True, input_shape=(25,200))(base_maps)#(merged)  #TODO input shape? Needed? Correct? Used?
     base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units))(base_maps)  # is this shape correct? TODO fix
     base_maps = LSTM(hidden_units, return_sequences=True)(base_maps)  # TODO do we want return_sequences again, really?
-    base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units))(base_maps) 
+    base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units))(base_maps)   # TODO noise shape may be incorrect now after shape changes
     base_maps = Dense(256, activation='relu')(base_maps)
     base_maps = Dropout(0.5)(base_maps)
     base_maps = Dense(128, activation='relu')(base_maps)
@@ -505,11 +509,11 @@ def createConvLSTM():
 
 createConvLSTM()
 
-model = tf.keras.models.load_model("models/onset")
-audioFile = "sample_maps/1061593 katagiri - Urushi/audio.wav"
+# model = tf.keras.models.load_model("models/onset")
+# audioFile = "sample_maps/1061593 katagiri - Urushi/audio.wav"
 name = "Urushi"
-prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFile) #TODO
-processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO peak picking, etc. Must create a list of essentially booleans: object or no object at each frame.
+# prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFile) #TODO
+# processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO peak picking, etc. Must create a list of essentially booleans: object or no object at each frame.
 
 #result = onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFile, name) #TODO
 #print(result)
