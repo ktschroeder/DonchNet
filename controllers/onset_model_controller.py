@@ -308,14 +308,20 @@ def createConvLSTM():
     x = reshape(x, (len(x), len(x[0]), len(x[0][0]), len(x[0][0][0]),1))  # 17, 24000, 15, 40, 1
     y = y.reshape((len(y),len(y[0]),1,1))
     x = x.astype(float32)
-    starRatings = starRatings.reshape((len(starRatings), 1, 1))
+    # starRatings = starRatings.reshape((len(starRatings), 1, 1))
+
+    # process star ratings so they can be prepended properly before LSTMs
+    stars = np.empty((len(starRatings), max_sequence_length, 1), dtype=float32)
+    for i in range(len(stars)):
+        stars[i] = np.full((max_sequence_length, 1), starRatings[i])
+    starRatings = stars
 
     # x = reshape(x, (len(x), 100, len(x[0][0]), 1,1))  # 17, 100, 40, 1
     # y = y.reshape((len(y), 100 ,1,1))   
     # x = x.astype(float32)
     
-    x = x.reshape((len(x), len(x[0]), 1, len(x[0][0]), len(x[0][0][0])))  # 17, 24000, 1, 15, 40
-    print(x.shape, y.shape)
+    # x = x.reshape((len(x), len(x[0]), 1, len(x[0][0]), len(x[0][0][0])))  # 17, 24000, 1, 15, 40
+    # print(x.shape, y.shape)
 
 
     # Create Sequential Model ###########################################
@@ -335,37 +341,8 @@ def createConvLSTM():
     # model.add(Dense(128, activation='relu'))
     # model.add(Dropout(0.5)) 
 
-    input = tf.keras.Input(shape=(max_sequence_length,1,15,40))
+    input = tf.keras.Input(shape=(max_sequence_length,15,40,1))
 
-    # def context(x):
-    #     padding = np.full((1,1,40), -500, dtype=float32)
-    #     context = 7
-    #     window = 2*context + 1 # prepend and append context
-    #     # want to create input_shape=(max_sequence_length,15,1,40) from (max_sequence_length, 1, 1, 40)
-    #     out = np.zeros((max_sequence_length,window,1,40))
-    #     for i in range (max_sequence_length):
-    #         bookended = np.zeros((window,1,40), dtype=float32)
-    #         for j in range (context*-1, context+1):
-    #             indexToGet = i + j  # if at start of audio this is negative in first half, if at end this is out of bounds positive in second half
-    #             if indexToGet < 0 or indexToGet >= max_sequence_length:
-    #                 bookended[j + context] = padding
-    #             else:
-    #                 sess = tf.compat.v1.Session()
-    #                 with sess.as_default():
-    #                     temp = x[i + j]
-    #                     eval = temp.eval()
-    #                     bookended[j + context] = eval  # if all else fails then just do this in audio processing. will use 14x more storage.
-                        
-    #                     # bookended[j + context] = x[i + j].eval()
-    #         out[i] = bookended
-    #     tensor_out = tf.constant(out)
-    #     return out
-
-            
-
-        
-
-    
 
     # base_maps = tf.keras.layers.Lambda(context)(input)
     base_maps = TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',data_format='channels_last'))(input) # TODO is 25 being scanned corectly?
@@ -379,16 +356,16 @@ def createConvLSTM():
 
     # base_maps = tf.keras.Input(shape=(max_sequence_length, hidden_units))(base_maps)
 
- #   starRatingFeat = tf.keras.Input(shape=(1, 1))
+    starRatingFeat = tf.keras.Input(shape=(max_sequence_length, 1))
 
-    # merged = concatenate([base_maps, starRatingFeat])
+    # merged = concatenate([starRatingFeat, base_maps])
 
- #   merged = tf.keras.layers.Concatenate()([base_maps, starRatingFeat])
+    merged = tf.keras.layers.Concatenate()([starRatingFeat, base_maps])
 
-    base_maps = LSTM(hidden_units, return_sequences=True, input_shape=(25,200))(base_maps)#(merged)  #TODO input shape? Needed? Correct? Used?
-    base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units))(base_maps)  # is this shape correct? TODO fix
+    base_maps = LSTM(hidden_units, return_sequences=True)(merged)#(merged)  #TODO input shape? Needed? Correct? Used? , input_shape=(25,200)
+    base_maps = Dropout(0.5)(base_maps)  # is this shape correct? TODO fix , noise_shape=(None,1,hidden_units)
     base_maps = LSTM(hidden_units, return_sequences=True)(base_maps)  # TODO do we want return_sequences again, really?
-    base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units))(base_maps)   # TODO noise shape may be incorrect now after shape changes
+    base_maps = Dropout(0.5)(base_maps)   # TODO noise shape may be incorrect now after shape changes , noise_shape=(None,1,hidden_units)
     base_maps = Dense(256, activation='relu')(base_maps)
     base_maps = Dropout(0.5)(base_maps)
     base_maps = Dense(128, activation='relu')(base_maps)
@@ -397,10 +374,10 @@ def createConvLSTM():
     base_maps = Dense(1, activation='sigmoid')(base_maps)
 
     epochs = 1
-    gradients_per_update = 4  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
-    batch_size = 10
+    gradients_per_update = 10  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
+    batch_size = 2  # TODO really cutting it close here, can only half one more time
 
-    ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input], outputs=[base_maps])
+    ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input, starRatingFeat], outputs=[base_maps])
 #   ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input, starRatingFeat], outputs=[base_maps])
 
     # bind all
@@ -410,8 +387,8 @@ def createConvLSTM():
         optimizer = tf.keras.optimizers.SGD(momentum=0.01, nesterov=True, learning_rate=learning_rate),
         metrics = tf.keras.metrics.AUC(curve='PR') )
 
-    history = ga_model.fit(x, y, batch_size=batch_size, epochs=epochs, verbose=1, validation_split=0.2, )
-#   history = ga_model.fit([x, starRatings], y, batch_size=batch_size, epochs=epochs, verbose=1, validation_split=0.2, )
+    # history = ga_model.fit(x, y, batch_size=batch_size, epochs=epochs, verbose=1, validation_split=0.2, )
+    history = ga_model.fit([x, starRatings], y, batch_size=batch_size, epochs=epochs, verbose=1, validation_split=0.2, )
     print(ga_model.summary())
 
     
