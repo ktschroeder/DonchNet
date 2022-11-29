@@ -4,17 +4,31 @@ import os
 from misc_tools import slugify
 import shutil
 from misc_tools import generate_osu_file
+from scipy.signal import argrelextrema
 
-threshold = 0.05 # TODO standardize this
+threshold = 0.06 # 0.06 # TODO standardize this
+
 def processPrediction(prediction, threshold):
-    for i in range(len(prediction)):
-        if prediction[i] >= threshold:
-            prediction[i] = 1
-        else:
-            prediction[i] = 0
-    return prediction
+    predictions_smoothed = np.convolve(prediction, np.hamming(5), 'same')
+    maxima = argrelextrema(predictions_smoothed, np.greater_equal, order=1)[0]
+    # peak picking process is from Dance Dance Convolution
+    # after hamming, among local maxima, assign a hit to original values above the given threshold
 
-def createMap(binaryPrediction, audioFile, name, starRating):
+    # for i in range(len(prediction)):
+    #     if prediction[i] >= threshold:
+    #         prediction[i] = 1
+    #     else:
+    #         prediction[i] = 0
+
+    onsets = []
+    for i in maxima:
+        if prediction[i] >= threshold:
+            t = float(i) * 10  # 10 ms per frame
+            onsets.append(t)
+
+    return onsets
+
+def createMap(onsets, audioFile, name, starRating):
     if not os.path.exists("data"):
         os.makedirs("data")
     if not os.path.exists("data/prediction_maps"):
@@ -26,17 +40,16 @@ def createMap(binaryPrediction, audioFile, name, starRating):
 
     shutil.copyfile(audioFile, f"{path}/audio.wav")
 
-    osuFile = generate_osu_file.generateOsuFile(binaryPrediction, name, starRating)
+    osuFile = generate_osu_file.generateOsuFile(onsets, name, starRating)
 
     file = open(f"{path}/map.osu", "w")
     file.write(osuFile)
 
-    return file# TODO
+    return file
 
 def convertOnsetPredictionToMap(prediction, audioFile, name, starRating):
     prediction = np.reshape(prediction, (config.audioLengthMaxSeconds * 100))
-    # TODO hamming and stuff
-    binaryPrediction = processPrediction(prediction, threshold)
-    file = createMap(binaryPrediction, audioFile, name, starRating)
+    onsets = processPrediction(prediction, threshold)
+    file = createMap(onsets, audioFile, name, starRating)
 
     return file

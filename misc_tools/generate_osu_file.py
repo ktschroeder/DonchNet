@@ -1,6 +1,9 @@
-def generateOsuFile(binaryPrediction, name, starRating):
+import random
+
+def generateOsuFile(onsets, name, starRating):
     # TODO automatic snapping? There is no well-defined starting offset, also red barlines can change and appear several times normally. Maybe leave this to be done manually
 
+    randomID = random.randrange(99999999)
     out = f'''osu file format v14
 
 [General]
@@ -29,8 +32,8 @@ Creator:DonNet
 Version:Target SR {starRating} (onsets only)
 Source:
 Tags:DonNet
-BeatmapID:999994762
-BeatmapSetID:991061593
+BeatmapID:{900000000 + randomID}
+BeatmapSetID:{900000000 + randomID}
 
 [Difficulty]
 HPDrainRate:6
@@ -58,9 +61,9 @@ SliderTickRate:1
 '''
 
     hits = []
-    for i in range(len(binaryPrediction)):
-        if binaryPrediction[i] == 1:
-            hits.append(f"288,160,{i * 10},1,0,0:0:0:0:\n")  # multiply by 10 because each frame is 10 milliseconds
+    for i in onsets:
+        hits.append(f"288,160,{i},1,0,0:0:0:0:\n")
     out = out + ''.join(hits)
+    print(f"{len(onsets)} onsets created for {name}")
 
     return out

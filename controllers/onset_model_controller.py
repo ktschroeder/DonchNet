@@ -343,8 +343,10 @@ def createConvLSTM():
 # createConvLSTM()
 
 model = tf.keras.models.load_model("models/onset")
-audioFile = "sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.wav"
-name = "Inferno"
+# audioFile = "sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.wav"
+# name = "Inferno (new process - t 0.06)"
+audioFile = "sample_maps/1061593 katagiri - Urushi/audio.wav"
+name = "Urushi (t 0.06)"
 starRating = 5.0
 prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFile, starRating)
 processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO peak picking, etc. Must create a list of essentially booleans: object or no object at each frame.
