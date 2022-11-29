@@ -2,6 +2,7 @@ data/json/*
 data/mels/*
 data/stored_feats/*
 data/holdout_feats/*
+data/prediction_maps/*
 models/*
 */__pycache__
 __pycache__

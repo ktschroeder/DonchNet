@@ -311,7 +311,7 @@ def createConvLSTM():
 
     base_maps = Dense(1, activation='sigmoid')(base_maps)
 
-    epochs = 1
+    epochs = 100
     gradients_per_update = 10  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
     batch_size = 2  # TODO really cutting it close here, can only half one more time
 
@@ -340,15 +340,16 @@ def createConvLSTM():
     print("got to end")
 
 
-createConvLSTM()
+# createConvLSTM()
 
-# model = tf.keras.models.load_model("models/onset")
-# audioFile = "sample_maps/1061593 katagiri - Urushi/audio.wav"
-name = "Urushi"
-# prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFile) #TODO
-# processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO peak picking, etc. Must create a list of essentially booleans: object or no object at each frame.
+model = tf.keras.models.load_model("models/onset")
+audioFile = "sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.wav"
+name = "Inferno"
+starRating = 5.0
+prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFile, starRating)
+processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO peak picking, etc. Must create a list of essentially booleans: object or no object at each frame.
 
-#result = onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFile, name) #TODO
+result = controllers.onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFile, name, starRating) #TODO
 #print(result)
 
 print("got to end of file")
