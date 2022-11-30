@@ -6,10 +6,12 @@ import map_to_json_converter
 from feature_extraction import audio_to_feats as atf
 # from dataset_tools import dataset_management as dm
 from dataset_tools import audio_converter as ac
+import traceback
 
 from misc_tools import slugify
 
 def jointlyMakeJsonsAndMels():
+    debug = 0  # number of maps to skip over, for debugging or to start at some point. Set this to 0 for normal use of this function.
     mainDir = "C:/Users/Admin/osu!/Songs"  # TODO temporary
     tempWavDir = "data/temp/temp.wav"
     if not os.path.exists("data"):
@@ -34,7 +36,12 @@ def jointlyMakeJsonsAndMels():
         for item in os.listdir(os.path.join(mainDir, songFolder)):
             ext = os.path.splitext(item)[-1].lower()
             if ext == ".osu":
-                json = map_to_json_converter.mapToJson(os.path.join(mainDir, songFolder, item), newDir)
+                try:
+                    json = map_to_json_converter.mapToJson(os.path.join(mainDir, songFolder, item), newDir)
+                except:
+                    print(f"mapToJson failed for {os.path.join(mainDir, songFolder, item)}, stack trace follows:")
+                    traceback.print_exc()
+                    assert(None)
         # title = json["metadata"]["Title"].strip()
         # mapper = json["metadata"]["Creator"].strip()
         # title = slugify(title)
@@ -42,8 +49,15 @@ def jointlyMakeJsonsAndMels():
         # id = title + '-' + mapper
 
         for item in os.listdir(os.path.join(mainDir, songFolder)):  # to conserve storage, we temporarily convert to WAV to standardize, create audio feats, then delete the WAV
+            
             ext = os.path.splitext(item)[-1].lower()
             if not (ext == ".mp3" or ext == ".ogg"):
+                continue
+
+            if(processedAudios < debug):
+                processedAudios += 1
+                if processedAudios == debug - 1:
+                    print("Finished debug skip...")
                 continue
 
             if ext == ".mp3":
@@ -56,7 +70,7 @@ def jointlyMakeJsonsAndMels():
             processedAudios += 1
             if processedAudios < 99 and processedAudios % 10 == 0:
                 print(f"Processed {processedAudios} audios...")
-            elif processedAudios % 100 == 0:
+            elif processedAudios % 10 == 0:
                 if processedAudios == 100:
                     print("From now on, only printing an update every 100 audios.")
                 print(f"Processed {processedAudios} audios...")

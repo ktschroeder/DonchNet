@@ -41,6 +41,9 @@ def mapToJson(file, targetDir, enc="utf8"):  # "C:/Users/Admin/Documents/GitHub/
     timing_line = get_line('[TimingPoints]')
     hit_line = get_line('[HitObjects]')
 
+    if not editor_line:  # some old maps, e.g. in osu file format v5, don't have an editor line
+        editor_line = metadata_line
+
     general_list = osu[general_line:editor_line-1]
     metadata_list = osu[metadata_line:difficulty_line-1]
     difficulty_list = osu[difficulty_line:events_line-1]
