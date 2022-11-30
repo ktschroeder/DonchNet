@@ -21,6 +21,9 @@ from tensorflow.keras.optimizers import Optimizer
 
 import config
 
+from sklearn.utils import shuffle
+from sklearn.model_selection import train_test_split
+
 
 # import runai.ga.keras
 
@@ -35,10 +38,79 @@ import config
 # songFeats = []
 mainDir = "data/stored_feats"
 
-# overriding train step 
-# my attempt 
-# it's not appropriately implemented 
-# and need to fix 
+
+# GENERATOR via https://medium.com/@mrgarg.rajat/training-on-large-datasets-that-dont-fit-in-memory-in-keras-60a974785d71
+def generatorPrep():
+    filenames_counter = 0
+    labels_counter = -1
+
+    mapFeatsFiles = []
+    songFeatsFiles = []
+    index = 0
+    mapCount = 0
+    for dir in os.listdir(mainDir):
+        # mapFeatsFiles.append([])
+        # songFeatsFiles.append([])
+
+        #  We will need to virtually duplicate the audio feat file for each map feat file to be 1-to-1
+        audioFeatFile = None
+        for item in os.listdir(os.path.join(mainDir, dir)):
+            ext = os.path.splitext(item)[-1].lower()
+            if ext == ".pkl":
+                audioFeatFile = item
+        assert(audioFeatFile)
+        for item in os.listdir(os.path.join(mainDir, dir)):
+            ext = os.path.splitext(item)[-1].lower()
+            if ext == ".json":
+                mapFeatsFiles.append(os.path.join(mainDir, dir, item))
+                songFeatsFiles.append(os.path.join(mainDir, dir, audioFeatFile))
+    # now we have all file names in mapFeatsFiles and songFeatsFiles
+
+    songsShuffled, mapsShuffled = shuffle(songFeatsFiles, mapFeatsFiles)
+    X_train_filenames, X_val_filenames, y_train_filenames, y_val_filenames = train_test_split(songsShuffled, mapsShuffled, test_size=0.2, random_state=1)
+    return X_train_filenames, X_val_filenames, y_train_filenames, y_val_filenames
+
+
+class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgarg.rajat/training-on-large-datasets-that-dont-fit-in-memory-in-keras-60a974785d71
+  
+    def __init__(self, songFilenames, mapFilenames, batch_size) :
+        self.songFilenames = songFilenames
+        self.mapFilenames = mapFilenames
+        self.batch_size = batch_size
+    
+    def __len__(self) :
+        return (np.ceil(len(self.songFilenames) / float(self.batch_size))).astype(np.int)
+  
+    def __getitem__(self, idx) :
+        batch_x = self.songFilenames[idx * self.batch_size : (idx+1) * self.batch_size]
+        batch_y = self.mapFilenames[idx * self.batch_size : (idx+1) * self.batch_size]
+    
+        # Processing this batch to prepare it for the model
+        songFeats = batchGetSongFeats(batch_x)
+        mapFeats = batchGetMapFeats(batch_y)
+        assert(len(songFeats) == len(mapFeats))
+
+        y, x, starRatings = batchPrepareFeatsForModel(mapFeats, songFeats)
+
+        # print("in generator: ", x.shape, y.shape, starRatings.shape)  # currently (17, 24000, 15, 40) (17, 24000) (17,)
+    
+
+        x = reshape(x, (len(x), len(x[0]), len(x[0][0]), len(x[0][0][0]),1))  # 17, 24000, 15, 40, 1
+        y = y.reshape((len(y),len(y[0]),1,1))
+        x = x.astype(float32)
+        # starRatings = starRatings.reshape((len(starRatings), 1, 1))
+
+        # process star ratings so they can be prepended properly before LSTMs
+        stars = np.empty((len(starRatings), max_sequence_length, 1), dtype=float32)
+        for i in range(len(stars)):
+            stars[i] = np.full((max_sequence_length, 1), starRatings[i])
+        starRatings = stars
+
+        return [x, starRatings], y
+        # return np.array([
+        #     resize(imread('/content/all_images/' + str(file_name)), (80, 80, 3))
+        #        for file_name in batch_x])/255.0, np.array(batch_y)
+
 class CustomTrainStep(tf.keras.Model): # via https://stackoverflow.com/questions/66472201/gradient-accumulation-with-custom-model-fit-in-tf-keras
     def __init__(self, n_gradients, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -75,7 +147,6 @@ class CustomTrainStep(tf.keras.Model): # via https://stackoverflow.com/questions
         self.n_acum_step.assign(0)
         for i in range(len(self.gradient_accumulation)):
             self.gradient_accumulation[i].assign(tf.zeros_like(self.trainable_variables[i], dtype=tf.float32))
-
 
 class AccumOptimizer(Optimizer):  # via https://stackoverflow.com/questions/55268762/how-to-accumulate-gradients-for-large-batch-sizes-in-keras
     """Inheriting Optimizer class, wrapping the original optimizer
@@ -174,6 +245,21 @@ def jointlyGetMapAndSongFeats():
 
     return mapFeats, songFeats, mapCount
 
+def batchGetSongFeats(songFeatPaths):
+    songFeats = []
+    for item in songFeatPaths:
+        file = open(item, 'rb')
+        data = pickle.load(file)
+        songFeats.append([item[:-4], data])  # the -4 removes ".pkl"  # TODO as it stands, this includes the full path. Probably don't want this.
+    return songFeats
+
+def batchGetMapFeats(mapFeatPaths):
+    mapFeats = []
+    for item in mapFeatPaths:
+        id, onsets, sr = jtf.jsonToFeats(item)
+        mapFeats.append([id, onsets, sr])
+    return mapFeats
+
 max_sequence_length = config.audioLengthMaxSeconds * 100  # 100 frames per second, or 10 ms per frame
 def prepareFeatsForModel(mapFeats, songFeats, mapCount):
     pMapFeats = np.full((mapCount, max_sequence_length), -500)  # TODO is -500 appropriate here?
@@ -230,10 +316,59 @@ def prepareFeatsForModel(mapFeats, songFeats, mapCount):
 
     return pMapFeats, pSongFeats, starRatings
 
+def batchPrepareFeatsForModel(mapFeats, songFeats):
+    mapCount = len(mapFeats)
+    pMapFeats = np.full((mapCount, max_sequence_length), -500)  # TODO is -500 appropriate here?
+    pSongFeats = np.full((mapCount, max_sequence_length, 15, 40), -500)  # incoming as (mapCount, max_sequence_length,15,40)
+    starRatings = np.empty(mapCount, dtype=float32)
+    
+    for i in range(len(mapFeats)):
+        audioFrames = len(songFeats[i][1])
+
+        map = mapFeats[i]
+        onsets = map[1]  # time in ms of objects in map
+        hitIndex = 0  # index of hitObject in the map (listed in variable: onsets)
+        groundTruth = 0  # whether there is an object in this frame
+        groundTruths = []
+        for j in range(audioFrames * 10):  # for each millisecond
+            if j / 10 >= max_sequence_length:
+                break
+            if hitIndex < len(onsets) and int(onsets[hitIndex]) <= j:  # if there is a hit
+                hitIndex += 1
+                groundTruth = 1
+            if j % 10 == 9:  # at every 10 milliseconds we summarize the 10ms frame and reset
+                groundTruths.append(groundTruth)
+                # temp += groundTruth
+                groundTruth = 0
+        # print(temp, "hits")
+        for j in range(len(groundTruths), max_sequence_length):
+            groundTruths.append(0) # TODO this was -999, could be -1. 0 okay?
+        # pMapFeats.append(tf.convert_to_tensor(groundTruths, dtype=tf.int32))
+        pMapFeats[i] = groundTruths
+        starRatings[i] = float32(map[2])  # star rating of map (difficulty)
+            
+        trimmedSongFeats = songFeats[i][1][:min(len(songFeats[i][1]), max_sequence_length)]  # trim to max sequence length if applicable
+        pad = []
+        for k in range (max_sequence_length - len(trimmedSongFeats)):
+            # print("got in with", max_sequence_length - len(trimmedSongFeats))
+            pad.append(np.full((15,40), -500))
+        # print(pad)
+        if(len(pad) > 0):
+            trimmedSongFeats = np.vstack((trimmedSongFeats, pad))
+        pSongFeats[i] = trimmedSongFeats
+
+    return pMapFeats, pSongFeats, starRatings
+
+
 def createConvLSTM():
-    mapFeats, songFeats, count = jointlyGetMapAndSongFeats()
-    print(count, "maps total")
-    y, x, starRatings = prepareFeatsForModel(mapFeats, songFeats, count)
+    
+
+    X_train_filenames, X_val_filenames, y_train_filenames, y_val_filenames = generatorPrep()
+    
+    batch_size = 2  # TODO pick near as large as possible for speed?  This results in  trying to allocate the tensor in memory for some reason. 3 is OOM.
+    my_training_batch_generator = My_Custom_Generator(X_train_filenames, y_train_filenames, batch_size)
+    my_validation_batch_generator = My_Custom_Generator(X_val_filenames, y_val_filenames, batch_size)
+
 
     # FULL CNN MODEL
     # convolutional layer with 10 filter kernels that are 7-wide in time and 3-wide in frequency. ReLU.
@@ -264,19 +399,7 @@ def createConvLSTM():
     # seq_length_cap = 30000  # 30000 frames = 300 seconds = 5 minutes
 
 
-    print(x.shape, y.shape, starRatings.shape)  # currently (17, 24000, 15, 40) (17, 24000) (17,)
     
-
-    x = reshape(x, (len(x), len(x[0]), len(x[0][0]), len(x[0][0][0]),1))  # 17, 24000, 15, 40, 1
-    y = y.reshape((len(y),len(y[0]),1,1))
-    x = x.astype(float32)
-    # starRatings = starRatings.reshape((len(starRatings), 1, 1))
-
-    # process star ratings so they can be prepended properly before LSTMs
-    stars = np.empty((len(starRatings), max_sequence_length, 1), dtype=float32)
-    for i in range(len(stars)):
-        stars[i] = np.full((max_sequence_length, 1), starRatings[i])
-    starRatings = stars
 
     clear_session()
 
@@ -311,9 +434,9 @@ def createConvLSTM():
 
     base_maps = Dense(1, activation='sigmoid')(base_maps)
 
-    epochs = 100
+    epochs = 2
     gradients_per_update = 10  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
-    batch_size = 2  # TODO really cutting it close here, can only half one more time
+    batch_size = 1  # TODO really cutting it close here, can only half one more time
 
     ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input, starRatingFeat], outputs=[base_maps])
 #   ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input, starRatingFeat], outputs=[base_maps])
@@ -326,7 +449,7 @@ def createConvLSTM():
         metrics = tf.keras.metrics.AUC(curve='PR') )
 
     # history = ga_model.fit(x, y, batch_size=batch_size, epochs=epochs, verbose=1, validation_split=0.2, )
-    history = ga_model.fit([x, starRatings], y, batch_size=batch_size, epochs=epochs, verbose=1, validation_split=0.2, )
+    history = ga_model.fit(my_training_batch_generator, validation_data=my_validation_batch_generator, batch_size=batch_size, epochs=epochs, verbose=1)
     print(ga_model.summary())
 
 
@@ -336,22 +459,21 @@ def createConvLSTM():
     with open('models/history.pickle', 'wb') as handle:
         pickle.dump(history, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-
     print("got to end")
 
 
-# createConvLSTM()
+createConvLSTM()
 
-model = tf.keras.models.load_model("models/onset")
+# model = tf.keras.models.load_model("models/onset")
 # audioFile = "sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.wav"
 # name = "Inferno (new process - t 0.06)"
-audioFile = "sample_maps/1061593 katagiri - Urushi/audio.wav"
-name = "Urushi (t 0.06)"
-starRating = 5.0
-prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFile, starRating)
-processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO peak picking, etc. Must create a list of essentially booleans: object or no object at each frame.
+# audioFile = "sample_maps/1061593 katagiri - Urushi/audio.wav"
+# name = "Urushi (t 0.06)"
+# starRating = 5.0
+# prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFile, starRating)
+# processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO peak picking, etc. Must create a list of essentially booleans: object or no object at each frame.
 
-result = controllers.onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFile, name, starRating) #TODO
-#print(result)
+# result = controllers.onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFile, name, starRating)
+# print(result)
 
 print("got to end of file")
