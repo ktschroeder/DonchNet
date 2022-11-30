@@ -51,15 +51,18 @@ def generatorPrep():
     for dir in os.listdir(mainDir):
         # mapFeatsFiles.append([])
         # songFeatsFiles.append([])
-
+        path = os.path.join(mainDir, dir)
         #  We will need to virtually duplicate the audio feat file for each map feat file to be 1-to-1
         audioFeatFile = None
-        for item in os.listdir(os.path.join(mainDir, dir)):
+        for item in os.listdir(path):
             ext = os.path.splitext(item)[-1].lower()
             if ext == ".pkl":
                 audioFeatFile = item
-        assert(audioFeatFile)
-        for item in os.listdir(os.path.join(mainDir, dir)):
+        if not audioFeatFile:
+            print(f"Couldn't get audioFeatFile from {path}")
+            assert(None)
+            
+        for item in os.listdir(path):
             ext = os.path.splitext(item)[-1].lower()
             if ext == ".json":
                 mapFeatsFiles.append(os.path.join(mainDir, dir, item))
@@ -68,6 +71,7 @@ def generatorPrep():
 
     songsShuffled, mapsShuffled = shuffle(songFeatsFiles, mapFeatsFiles)
     X_train_filenames, X_val_filenames, y_train_filenames, y_val_filenames = train_test_split(songsShuffled, mapsShuffled, test_size=0.2, random_state=1)
+
     return X_train_filenames, X_val_filenames, y_train_filenames, y_val_filenames
 
 
@@ -434,9 +438,9 @@ def createConvLSTM():
 
     base_maps = Dense(1, activation='sigmoid')(base_maps)
 
-    epochs = 2
-    gradients_per_update = 10  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
-    batch_size = 1  # TODO really cutting it close here, can only half one more time
+    epochs = 6
+    gradients_per_update = 128  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
+    batch_size = 2  # TODO really cutting it close here, can only half one more time
 
     ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input, starRatingFeat], outputs=[base_maps])
 #   ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input, starRatingFeat], outputs=[base_maps])

@@ -12,7 +12,7 @@ from misc_tools import slugify
 
 def jointlyMakeJsonsAndMels():
     debug = 0  # number of maps to skip over, for debugging or to start at some point. Set this to 0 for normal use of this function.
-    mainDir = "C:/Users/Admin/osu!/Songs"  # TODO temporary
+    mainDir = "C:/Users/Admin/Documents/adhoc_thing"  # TODO temporary
     tempWavDir = "data/temp/temp.wav"
     if not os.path.exists("data"):
         os.makedirs("data")
