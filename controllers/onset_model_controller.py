@@ -98,7 +98,6 @@ class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgar
 
         # print("in generator: ", x.shape, y.shape, starRatings.shape)  # currently (17, 24000, 15, 40) (17, 24000) (17,)
     
-
         x = reshape(x, (len(x), len(x[0]), len(x[0][0]), len(x[0][0][0]),1))  # 17, 24000, 15, 40, 1
         y = y.reshape((len(y),len(y[0]),1,1))
         x = x.astype(float32)
@@ -327,6 +326,7 @@ def batchPrepareFeatsForModel(mapFeats, songFeats):
     starRatings = np.empty(mapCount, dtype=float32)
     
     for i in range(len(mapFeats)):
+
         audioFrames = len(songFeats[i][1])
 
         map = mapFeats[i]
@@ -369,9 +369,9 @@ def createConvLSTM():
 
     X_train_filenames, X_val_filenames, y_train_filenames, y_val_filenames = generatorPrep()
     
-    batch_size = 2  # TODO pick near as large as possible for speed?  This results in  trying to allocate the tensor in memory for some reason. 3 is OOM.
-    my_training_batch_generator = My_Custom_Generator(X_train_filenames, y_train_filenames, batch_size)
-    my_validation_batch_generator = My_Custom_Generator(X_val_filenames, y_val_filenames, batch_size)
+    generator_batch_size = 2  # TODO pick near as large as possible for speed? This results in trying to allocate the tensor in memory for some reason. 3 is OOM.
+    my_training_batch_generator = My_Custom_Generator(X_train_filenames, y_train_filenames, generator_batch_size)
+    my_validation_batch_generator = My_Custom_Generator(X_val_filenames, y_val_filenames, generator_batch_size)
 
 
     # FULL CNN MODEL
@@ -401,6 +401,8 @@ def createConvLSTM():
     hidden_units = 200 # 42
     # padding_value = -999
     # seq_length_cap = 30000  # 30000 frames = 300 seconds = 5 minutes
+
+
 
 
     
@@ -438,9 +440,9 @@ def createConvLSTM():
 
     base_maps = Dense(1, activation='sigmoid')(base_maps)
 
-    epochs = 6
-    gradients_per_update = 128  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
-    batch_size = 2  # TODO really cutting it close here, can only half one more time
+    epochs = 5
+    gradients_per_update = 10  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
+    batch_size = 5  # TODO really cutting it close here, can only half one more time # This now seems to have no effect
 
     ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input, starRatingFeat], outputs=[base_maps])
 #   ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input, starRatingFeat], outputs=[base_maps])
@@ -452,8 +454,16 @@ def createConvLSTM():
         optimizer = tf.keras.optimizers.SGD(momentum=0.01, nesterov=True, learning_rate=learning_rate),
         metrics = tf.keras.metrics.AUC(curve='PR') )
 
+    checkpoint_filepath = 'models/checkpoint'
+    model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+        filepath=checkpoint_filepath,
+        save_weights_only=False,
+        monitor='val_auc',
+        mode='max',
+        save_best_only=True)
+
     # history = ga_model.fit(x, y, batch_size=batch_size, epochs=epochs, verbose=1, validation_split=0.2, )
-    history = ga_model.fit(my_training_batch_generator, validation_data=my_validation_batch_generator, batch_size=batch_size, epochs=epochs, verbose=1)
+    history = ga_model.fit(my_training_batch_generator, validation_data=my_validation_batch_generator, batch_size=batch_size, epochs=epochs, verbose=1, callbacks=[model_checkpoint_callback])
     print(ga_model.summary())
 
 
