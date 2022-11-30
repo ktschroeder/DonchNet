@@ -10,7 +10,7 @@ from dataset_tools import audio_converter as ac
 from misc_tools import slugify
 
 def jointlyMakeJsonsAndMels():
-    mainDir = "C:/Users/Admin/Documents/medium_taiko_dataset"  # TODO temporary
+    mainDir = "C:/Users/Admin/osu!/Songs"  # TODO temporary
     tempWavDir = "data/temp/temp.wav"
     if not os.path.exists("data"):
         os.makedirs("data")
@@ -43,22 +43,25 @@ def jointlyMakeJsonsAndMels():
 
         for item in os.listdir(os.path.join(mainDir, songFolder)):  # to conserve storage, we temporarily convert to WAV to standardize, create audio feats, then delete the WAV
             ext = os.path.splitext(item)[-1].lower()
+            if not (ext == ".mp3" or ext == ".ogg"):
+                continue
+
             if ext == ".mp3":
                 ac.mp3ToWav(os.path.join(mainDir, songFolder, item), tempWavDir)
-                atf.makeFeats(tempWavDir, newDir, songFolder)
-                os.remove(tempWavDir)
-                processedAudios += 1
-                if processedAudios % 20 == 0:
-                    print(f"Processed {processedAudios} audios...")
             if ext == ".ogg":
                 ac.oggToWav(os.path.join(mainDir, songFolder, item), tempWavDir)
-                atf.makeFeats(tempWavDir, newDir, songFolder)
-                os.remove(tempWavDir)
-                processedAudios += 1
-                if processedAudios % 20 == 0:
-                    print(f"Processed {processedAudios} audios...")
+
+            atf.makeFeats(tempWavDir, newDir, songFolder)
+            os.remove(tempWavDir)
+            processedAudios += 1
+            if processedAudios < 99 and processedAudios % 10 == 0:
+                print(f"Processed {processedAudios} audios...")
+            elif processedAudios % 100 == 0:
+                if processedAudios == 100:
+                    print("From now on, only printing an update every 100 audios.")
+                print(f"Processed {processedAudios} audios...")
             # if ext == ".wav":
             #     atf.makeFeats(os.path.join(mainDir, songFolder, item), newDir, songFolder)
-    print("Finished making feats")
+    print(f"Finished making feats. Processed {processedAudios} audios.")
 
 jointlyMakeJsonsAndMels()
