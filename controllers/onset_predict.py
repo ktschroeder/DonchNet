@@ -39,6 +39,6 @@ def makePredictionFromAudio(model, audioFile, sr):
 
 def processPrediction(prediction):  # prediction here is the tensor of frequency bands created in makePredictionFromAudio.
     prediction = prediction[0] # assuming only one prediction, this reshapes data. If many predictions, implement for each element in input.
-    print("got here!!!!")
+    print("Prediction sample:")
     print(prediction)
     return "placeholder"

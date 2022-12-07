@@ -3,13 +3,13 @@ import random
 def generateOsuFile(onsets, name, starRating):
     # TODO automatic snapping? There is no well-defined starting offset, also red barlines can change and appear several times normally. Maybe leave this to be done manually
 
-    randomID = random.randrange(99999999)
+    randomID = random.randrange(999999)
     out = f'''osu file format v14
 
 [General]
 AudioFilename: audio.wav
 AudioLeadIn: 0
-PreviewTime: 1000
+PreviewTime: -1
 Countdown: 0
 SampleSet: Normal
 StackLeniency: 0.7
@@ -26,14 +26,14 @@ TimelineZoom: 2
 [Metadata]
 Title:{name}
 TitleUnicode:{name}
-Artist:unknown
-ArtistUnicode:unknown
+Artist:DonNet
+ArtistUnicode:DonNet
 Creator:DonNet
 Version:Target SR {starRating} (onsets only)
-Source:
+Source:DonNet
 Tags:DonNet
-BeatmapID:{900000000 + randomID}
-BeatmapSetID:{900000000 + randomID}
+BeatmapID:0
+BeatmapSetID:-1
 
 [Difficulty]
 HPDrainRate:6

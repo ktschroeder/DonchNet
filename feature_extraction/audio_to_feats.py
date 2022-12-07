@@ -63,8 +63,8 @@ def makeFeats(file, targetDir = None, songFolder = None):  # './sample_maps/1061
     # assert 1 == 0
     # emphasized_signal = signal  # see article but can maybe just skip this anyway
     #
-    frame_size = 0.025  # 25 ms
-    frame_stride = 0.01  # 10 ms (15 ms overlap)
+    frame_size = 0.046  # was 0.025: 25 ms
+    frame_stride = 0.01  # 10 ms
 
     frame_length, frame_step = frame_size * sample_rate, frame_stride * sample_rate  # Convert from seconds to samples
     signal_length = len(emphasized_signal)
@@ -127,6 +127,8 @@ def makeFeats(file, targetDir = None, songFolder = None):  # './sample_maps/1061
     # title, diff = getTitleAndDiff(songFolder, jsons)
 
     filter_banks = addContext(filter_banks)  # new shape is (max_sequence_length,15,40)
+
+    
     
     if not targetDir:  # if no target directory then return the actual filter banks
         return filter_banks

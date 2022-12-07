@@ -24,6 +24,10 @@ import config
 from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
 
+# TODO if issues in development, remove this
+import absl.logging
+absl.logging.set_verbosity(absl.logging.ERROR)  # intended to suppress warning about noncallable functions when saving the model
+
 
 # import runai.ga.keras
 
@@ -40,7 +44,7 @@ mainDir = "data/stored_feats"
 
 
 # GENERATOR via https://medium.com/@mrgarg.rajat/training-on-large-datasets-that-dont-fit-in-memory-in-keras-60a974785d71
-def generatorPrep():
+def generatorPrep(dataProportion):
     filenames_counter = 0
     labels_counter = -1
 
@@ -64,7 +68,7 @@ def generatorPrep():
             
         for item in os.listdir(path):
             ext = os.path.splitext(item)[-1].lower()
-            if ext == ".json":
+            if ext == ".json" and random.random() < dataProportion:  # if random float from 0 to 1 is greater than dataProportion, we skip this map
                 mapFeatsFiles.append(os.path.join(mainDir, dir, item))
                 songFeatsFiles.append(os.path.join(mainDir, dir, audioFeatFile))
     # now we have all file names in mapFeatsFiles and songFeatsFiles
@@ -365,11 +369,28 @@ def batchPrepareFeatsForModel(mapFeats, songFeats):
 
 
 def createConvLSTM():
-    
 
-    X_train_filenames, X_val_filenames, y_train_filenames, y_val_filenames = generatorPrep()
-    
+    #################
+    #
+    #
+    dataProportion = 0.1  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
+    epochs = 20
+
+    gradients_per_update = 10  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
+    batch_size = 5  # TODO really cutting it close here, can only half one more time # This now seems to have no effect
+    learning_rate = 0.1  # was 0.01 originally
+    hidden_units_lstm = 200
+
     generator_batch_size = 2  # TODO pick near as large as possible for speed? This results in trying to allocate the tensor in memory for some reason. 3 is OOM.
+    #
+    #
+    #################
+
+    X_train_filenames, X_val_filenames, y_train_filenames, y_val_filenames = generatorPrep(dataProportion)
+
+    print(f"Training will use {len(X_train_filenames)} maps and validation will use {len(X_val_filenames)} maps, via dataProportion {dataProportion}.")
+    
+    
     my_training_batch_generator = My_Custom_Generator(X_train_filenames, y_train_filenames, generator_batch_size)
     my_validation_batch_generator = My_Custom_Generator(X_val_filenames, y_val_filenames, generator_batch_size)
 
@@ -394,26 +415,17 @@ def createConvLSTM():
     # fully connected ReLU layer with dimension 128
     # this model is trained using 100 unrollings for backpropagation through time.
 
-    learning_rate = 0.01
-    conv1d_strides = 12
-    conv1d_1_strides = 12   
-    conv1d_filters = 4
-    hidden_units = 200 # 42
+    
     # padding_value = -999
     # seq_length_cap = 30000  # 30000 frames = 300 seconds = 5 minutes
-
-
-
-
-    
 
     clear_session()
 
     input = tf.keras.Input(shape=(max_sequence_length,15,40,1))
 
     # base_maps = tf.keras.layers.Lambda(context)(input)
-    base_maps = TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',data_format='channels_last'))(input) # TODO is 25 being scanned corectly?
-    base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
+    base_maps = TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',data_format='channels_last'))(input)
+    base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps) # TODO is pooling correct with respect to dimensions?
     base_maps = TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same',data_format='channels_last'))(base_maps)
     base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
     base_maps = TimeDistributed(Flatten())(base_maps) # see above notes, does this overly flatten temporal?
@@ -429,20 +441,18 @@ def createConvLSTM():
 
     merged = tf.keras.layers.Concatenate()([starRatingFeat, base_maps])
 
-    base_maps = LSTM(hidden_units, return_sequences=True)(merged)#(merged)  #TODO input shape? Needed? Correct? Used? , input_shape=(25,200)
-    base_maps = Dropout(0.5)(base_maps)  # is this shape correct? TODO fix , noise_shape=(None,1,hidden_units)
-    base_maps = LSTM(hidden_units, return_sequences=True)(base_maps)  # TODO do we want return_sequences again, really?
-    base_maps = Dropout(0.5)(base_maps)   # TODO noise shape may be incorrect now after shape changes , noise_shape=(None,1,hidden_units)
+    base_maps = LSTM(hidden_units_lstm, return_sequences=True)(merged)#(merged)  #TODO input shape? Needed? Correct? Used? , input_shape=(25,200)
+    base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units_lstm))(base_maps)  # is this shape correct? TODO fix , noise_shape=(None,1,hidden_units)
+    base_maps = LSTM(hidden_units_lstm, return_sequences=True)(base_maps)  # TODO do we want return_sequences again, really?
+    base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units_lstm))(base_maps)   # TODO noise shape may be incorrect now after shape changes , noise_shape=(None,1,hidden_units)
     base_maps = Dense(256, activation='relu')(base_maps)
     base_maps = Dropout(0.5)(base_maps)
-    base_maps = Dense(128, activation='relu')(base_maps)
+    base_maps = Dense(128, activation='')(base_maps)
     base_maps = Dropout(0.5)(base_maps) 
 
     base_maps = Dense(1, activation='sigmoid')(base_maps)
 
-    epochs = 5
-    gradients_per_update = 10  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
-    batch_size = 5  # TODO really cutting it close here, can only half one more time # This now seems to have no effect
+    
 
     ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input, starRatingFeat], outputs=[base_maps])
 #   ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input, starRatingFeat], outputs=[base_maps])
@@ -473,21 +483,20 @@ def createConvLSTM():
     with open('models/history.pickle', 'wb') as handle:
         pickle.dump(history, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    print("got to end")
 
+# createConvLSTM()
 
-createConvLSTM()
-
-# model = tf.keras.models.load_model("models/onset")
+model = tf.keras.models.load_model("models/onset")
 # audioFile = "sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.wav"
-# name = "Inferno (new process - t 0.06)"
-# audioFile = "sample_maps/1061593 katagiri - Urushi/audio.wav"
-# name = "Urushi (t 0.06)"
-# starRating = 5.0
-# prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFile, starRating)
-# processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO peak picking, etc. Must create a list of essentially booleans: object or no object at each frame.
+# name = "Inferno"
+audioFile = "sample_maps/1061593 katagiri - Urushi/audio.wav"
+name = "Urushi"
+starRating = 4.9
+onsetThresholds = [0.05, 0.06, 0.07, 0.08, 0.09, 0.12, 0.15]  # required "confidence" for a prediction peak to be considered an onset
+prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFile, starRating)
+processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO peak picking, etc. Must create a list of essentially booleans: object or no object at each frame.
+for i in onsetThresholds:
+    newName = name + f" - T{i}"  # append threshold to name
+    controllers.onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFile, newName, starRating, i)
 
-# result = controllers.onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFile, name, starRating)
-# print(result)
-
-print("got to end of file")
+print("got to end")

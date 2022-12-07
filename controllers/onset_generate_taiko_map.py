@@ -6,8 +6,6 @@ import shutil
 from misc_tools import generate_osu_file
 from scipy.signal import argrelextrema
 
-threshold = 0.06 # 0.06 # TODO standardize this
-
 def processPrediction(prediction, threshold):
     predictions_smoothed = np.convolve(prediction, np.hamming(5), 'same')
     maxima = argrelextrema(predictions_smoothed, np.greater_equal, order=1)[0]
@@ -47,7 +45,7 @@ def createMap(onsets, audioFile, name, starRating):
 
     return file
 
-def convertOnsetPredictionToMap(prediction, audioFile, name, starRating):
+def convertOnsetPredictionToMap(prediction, audioFile, name, starRating, threshold):
     prediction = np.reshape(prediction, (config.audioLengthMaxSeconds * 100))
     onsets = processPrediction(prediction, threshold)
     file = createMap(onsets, audioFile, name, starRating)

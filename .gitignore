@@ -1,8 +1,10 @@
 data/json/*
 data/mels/*
 data/stored_feats/*
+data/stored_feats2/*
 data/holdout_feats/*
 data/prediction_maps/*
+data/old_prediction_maps/*
 models/*
 */__pycache__
 __pycache__

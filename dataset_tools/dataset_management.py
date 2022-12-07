@@ -18,8 +18,8 @@ def jointlyMakeJsonsAndMels():
         os.makedirs("data")
     if not os.path.exists("data/temp"):
         os.makedirs("data/temp")
-    if not os.path.exists("data/stored_feats"):
-        os.makedirs("data/stored_feats")
+    if not os.path.exists("data/stored_feats2"):
+        os.makedirs("data/stored_feats2")
     if not os.path.exists("data/holdout_feats"):
         os.makedirs("data/holdout_feats")
 
@@ -29,7 +29,7 @@ def jointlyMakeJsonsAndMels():
         if len(songFolder) > 60:
             safeName = songFolder[:60] + "---"  # fixes issues with directory names in Windows
         
-        newDir = os.path.join("data/stored_feats", safeName)
+        newDir = os.path.join("data/stored_feats2", safeName)
         if not os.path.exists(newDir):
             os.mkdir(newDir)
         json = ""
