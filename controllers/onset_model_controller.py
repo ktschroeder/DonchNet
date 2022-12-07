@@ -40,7 +40,7 @@ absl.logging.set_verbosity(absl.logging.ERROR)  # intended to suppress warning a
 
 # mapFeats = []
 # songFeats = []
-mainDir = "data/stored_feats"
+mainDir = "data/stored_feats2"
 
 
 # GENERATOR via https://medium.com/@mrgarg.rajat/training-on-large-datasets-that-dont-fit-in-memory-in-keras-60a974785d71
@@ -80,7 +80,25 @@ def generatorPrep(dataProportion):
 
 
 class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgarg.rajat/training-on-large-datasets-that-dont-fit-in-memory-in-keras-60a974785d71
-  
+
+    def addContext(self, x, bookendLength):
+    # x.reshape(())   (config.audioLengthMaxSeconds, 40)?
+        padding = np.full((1,40), -500, dtype=float32)  # TODO after normalization, this should be like -3 instead of -500. track minimum to determine this
+        context = bookendLength
+        window = 2*context + 1 # prepend and append context
+        # want to create input_shape=(max_sequence_length,15,40) from (max_sequence_length, 40)
+        out = np.zeros((len(x),window,40))
+        for i in range (len(x)):
+            bookended = np.zeros((window,40), dtype=float32)
+            for j in range (context*-1, context+1):
+                indexToGet = i + j  # if at start of audio this is negative in first half, if at end this is out of bounds positive in second half
+                if indexToGet < 0 or indexToGet >= len(x):
+                    bookended[j + context] = padding
+                else:
+                    bookended[j + context] = x[i + j] 
+            out[i] = bookended
+        return out
+    
     def __init__(self, songFilenames, mapFilenames, batch_size) :
         self.songFilenames = songFilenames
         self.mapFilenames = mapFilenames
@@ -94,7 +112,12 @@ class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgar
         batch_y = self.mapFilenames[idx * self.batch_size : (idx+1) * self.batch_size]
     
         # Processing this batch to prepare it for the model
+        bookendLength = 7  # number of frames to prepend and append on each side of central frame. For n, we have total 2n+1 frames.
         songFeats = batchGetSongFeats(batch_x)
+        for songFeat in songFeats:
+            songFeat[1] = self.addContext(songFeat[1], bookendLength)
+
+
         mapFeats = batchGetMapFeats(batch_y)
         assert(len(songFeats) == len(mapFeats))
 
@@ -370,11 +393,11 @@ def batchPrepareFeatsForModel(mapFeats, songFeats):
 
 def createConvLSTM():
 
-    #################
+    ######################################################################################################
     #
     #
-    dataProportion = 0.1  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
-    epochs = 20
+    dataProportion = 1  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
+    epochs = 2
 
     gradients_per_update = 10  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
     batch_size = 5  # TODO really cutting it close here, can only half one more time # This now seems to have no effect
@@ -384,7 +407,7 @@ def createConvLSTM():
     generator_batch_size = 2  # TODO pick near as large as possible for speed? This results in trying to allocate the tensor in memory for some reason. 3 is OOM.
     #
     #
-    #################
+    ######################################################################################################
 
     X_train_filenames, X_val_filenames, y_train_filenames, y_val_filenames = generatorPrep(dataProportion)
 
@@ -447,7 +470,7 @@ def createConvLSTM():
     base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units_lstm))(base_maps)   # TODO noise shape may be incorrect now after shape changes , noise_shape=(None,1,hidden_units)
     base_maps = Dense(256, activation='relu')(base_maps)
     base_maps = Dropout(0.5)(base_maps)
-    base_maps = Dense(128, activation='')(base_maps)
+    base_maps = Dense(128, activation='relu')(base_maps)
     base_maps = Dropout(0.5)(base_maps) 
 
     base_maps = Dense(1, activation='sigmoid')(base_maps)
@@ -484,19 +507,19 @@ def createConvLSTM():
         pickle.dump(history, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-# createConvLSTM()
+createConvLSTM()
 
-model = tf.keras.models.load_model("models/onset")
-# audioFile = "sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.wav"
-# name = "Inferno"
-audioFile = "sample_maps/1061593 katagiri - Urushi/audio.wav"
-name = "Urushi"
-starRating = 4.9
-onsetThresholds = [0.05, 0.06, 0.07, 0.08, 0.09, 0.12, 0.15]  # required "confidence" for a prediction peak to be considered an onset
-prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFile, starRating)
-processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO peak picking, etc. Must create a list of essentially booleans: object or no object at each frame.
-for i in onsetThresholds:
-    newName = name + f" - T{i}"  # append threshold to name
-    controllers.onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFile, newName, starRating, i)
+# model = tf.keras.models.load_model("models/onset")
+# # audioFile = "sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.wav"
+# # name = "Inferno"
+# audioFile = "sample_maps/1061593 katagiri - Urushi/audio.wav"
+# name = "Urushi"
+# starRating = 4.9
+# onsetThresholds = [0.05, 0.06, 0.07, 0.08, 0.09, 0.12, 0.15]  # required "confidence" for a prediction peak to be considered an onset
+# prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFile, starRating)
+# processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO peak picking, etc. Must create a list of essentially booleans: object or no object at each frame.
+# for i in onsetThresholds:
+#     newName = name + f" - T{i}"  # append threshold to name
+#     controllers.onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFile, newName, starRating, i)
 
 print("got to end")
