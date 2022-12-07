@@ -40,7 +40,7 @@ absl.logging.set_verbosity(absl.logging.ERROR)  # intended to suppress warning a
 
 # mapFeats = []
 # songFeats = []
-mainDir = "data/stored_feats2"
+mainDir = config.featureMainDirectory
 
 
 # GENERATOR via https://medium.com/@mrgarg.rajat/training-on-large-datasets-that-dont-fit-in-memory-in-keras-60a974785d71
@@ -83,7 +83,7 @@ class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgar
 
     def addContext(self, x, bookendLength):
     # x.reshape(())   (config.audioLengthMaxSeconds, 40)?
-        padding = np.full((1,40), -500, dtype=float32)  # TODO after normalization, this should be like -3 instead of -500. track minimum to determine this
+        padding = np.full((1,40), config.pad, dtype=float32)  # TODO after normalization, this should be like -3 instead of -500. track minimum to determine this
         context = bookendLength
         window = 2*context + 1 # prepend and append context
         # want to create input_shape=(max_sequence_length,15,40) from (max_sequence_length, 40)
@@ -292,8 +292,8 @@ def batchGetMapFeats(mapFeatPaths):
 
 max_sequence_length = config.audioLengthMaxSeconds * 100  # 100 frames per second, or 10 ms per frame
 def prepareFeatsForModel(mapFeats, songFeats, mapCount):
-    pMapFeats = np.full((mapCount, max_sequence_length), -500)  # TODO is -500 appropriate here?
-    pSongFeats = np.full((mapCount, max_sequence_length, 15, 40), -500)  # incoming as (mapCount, max_sequence_length,15,40)
+    pMapFeats = np.full((mapCount, max_sequence_length), config.pad)  # TODO is -500 appropriate here?
+    pSongFeats = np.full((mapCount, max_sequence_length, 15, 40), config.pad)  # incoming as (mapCount, max_sequence_length,15,40)
     idMap = -1
     idSong = -1
     starRatings = np.empty(mapCount, dtype=float32)
@@ -338,7 +338,7 @@ def prepareFeatsForModel(mapFeats, songFeats, mapCount):
             pad = []
             for k in range (max_sequence_length - len(trimmedSongFeats)):
                 # print("got in with", max_sequence_length - len(trimmedSongFeats))
-                pad.append(np.full((15,40), -500))
+                pad.append(np.full((15,40), config.pad))
             # print(pad)
             if(len(pad) > 0):
                 trimmedSongFeats = np.vstack((trimmedSongFeats, pad))
@@ -348,8 +348,8 @@ def prepareFeatsForModel(mapFeats, songFeats, mapCount):
 
 def batchPrepareFeatsForModel(mapFeats, songFeats):
     mapCount = len(mapFeats)
-    pMapFeats = np.full((mapCount, max_sequence_length), -500)  # TODO is -500 appropriate here?
-    pSongFeats = np.full((mapCount, max_sequence_length, 15, 40), -500)  # incoming as (mapCount, max_sequence_length,15,40)
+    pMapFeats = np.full((mapCount, max_sequence_length), config.pad)  # TODO is -500 appropriate here?
+    pSongFeats = np.full((mapCount, max_sequence_length, 15, 40), config.pad)  # incoming as (mapCount, max_sequence_length,15,40)
     starRatings = np.empty(mapCount, dtype=float32)
     
     for i in range(len(mapFeats)):
@@ -382,7 +382,7 @@ def batchPrepareFeatsForModel(mapFeats, songFeats):
         pad = []
         for k in range (max_sequence_length - len(trimmedSongFeats)):
             # print("got in with", max_sequence_length - len(trimmedSongFeats))
-            pad.append(np.full((15,40), -500))
+            pad.append(np.full((15,40), config.pad))
         # print(pad)
         if(len(pad) > 0):
             trimmedSongFeats = np.vstack((trimmedSongFeats, pad))

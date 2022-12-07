@@ -9,14 +9,14 @@ def makePredictionFromAudio(model, audioFile, sr):
     max_sequence_length = config.audioLengthMaxSeconds * 100  # 100 frames per second, or 10 ms per frame
 
     audioFeats = atf.makeFeats(audioFile)  # assumes this is a WAV file already
-    pSongFeats = np.full((1, max_sequence_length, 15, 40), -500)
+    pSongFeats = np.full((1, max_sequence_length, 15, 40), config.pad)  ## TODO this and the one below will soon not be -500
     
     # pSongFeats.append(tf.convert_to_tensor(songFeats[i][0][1], dtype=tf.int32))
     trimmedSongFeats = audioFeats[:min(len(audioFeats), max_sequence_length)]  # trim to max sequence length if applicable
     pad = []
     for k in range (max_sequence_length - len(trimmedSongFeats)):
         # print("got in with", max_sequence_length - len(trimmedSongFeats))
-        pad.append(np.full((15, 40), -500))
+        pad.append(np.full((15, 40), config.pad))
     # print(pad)
     if(len(pad) > 0):
         trimmedSongFeats = np.vstack((trimmedSongFeats, pad))

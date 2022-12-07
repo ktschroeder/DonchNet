@@ -9,6 +9,7 @@ from dataset_tools import audio_converter as ac
 import traceback
 import numpy as np
 import pickle
+import config
 
 from misc_tools import slugify
 
@@ -20,8 +21,8 @@ def normalize(feats, bandMeans, bandStdevs):
 
 def jointlyMakeJsonsAndMels():
     debug = 0  # number of maps to skip over, for debugging or to start at some point. Set this to 0 for normal use of this function.
-    mainDir = "C:/Users/Admin/Documents/adhoc_thing"  # TODO temporary
-    storageDir = "data/stored_feats2"
+    mainDir = config.datasetMainDirectory
+    storageDir = config.featureMainDirectory
     tempWavDir = "data/temp/temp.wav"
     means = []  # tracked for audio feats to help with normalization
     stdevs = []  # tracked for audio feats to help with normalization
