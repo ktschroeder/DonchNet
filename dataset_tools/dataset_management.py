@@ -38,6 +38,8 @@ def jointlyMakeJsonsAndMels():
     if not os.path.exists("data/holdout_feats"):
         os.makedirs("data/holdout_feats")
 
+    print(f"Analyzing songs folders in {mainDir}, which will be stored in {storageDir}...")
+
     processedAudios = 0
     for songFolder in os.listdir(mainDir):  # first make JSONs and get JSON info for ID that will be used in creating mels
         safeName = songFolder
@@ -90,7 +92,7 @@ def jointlyMakeJsonsAndMels():
             processedAudios += 1
             if processedAudios < 99 and processedAudios % 10 == 0:
                 print(f"Processed {processedAudios} audios...")
-            elif processedAudios % 10 == 0:
+            elif processedAudios % 100 == 0:
                 if processedAudios == 100:
                     print("From now on, only printing an update every 100 audios.")
                 print(f"Processed {processedAudios} audios...")
@@ -124,7 +126,7 @@ def jointlyMakeJsonsAndMels():
             with open(os.path.join(storageDir, folder, file), 'wb') as f:
                 pickle.dump(feats, f, protocol=pickle.HIGHEST_PROTOCOL)
             normalized += 1
-            if normalized % 250 == 0:
+            if normalized % 500 == 0:
                 print(f"Normalized {normalized} audio feat sets...")
 
     
