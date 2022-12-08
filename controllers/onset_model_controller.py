@@ -397,7 +397,7 @@ def createConvLSTM():
     #
     #
     dataProportion = 0.05  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
-    epochs = 5
+    epochs = 30
 
     gradients_per_update = 10  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
     batch_size = 5  # TODO really cutting it close here, can only half one more time # This now seems to have no effect
@@ -512,14 +512,16 @@ def createConvLSTM():
 model = tf.keras.models.load_model("models/onset")
 # audioFile = "sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.wav"
 # name = "Inferno"
-audioFile = "sample_maps/1061593 katagiri - Urushi/audio.wav"
-name = "Urushi"
-starRating = 5.0
-onsetThresholds = [0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.11, 0.12, 0.15, 0.18, 0.21, 0.25]  # required "confidence" for a prediction peak to be considered an onset
-prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFile, starRating)
-processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO peak picking, etc. Must create a list of essentially booleans: object or no object at each frame.
-for i in onsetThresholds:
-    newName = name + f" - T{i}"  # append threshold to name
-    controllers.onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFile, newName, starRating, i)
+audioFiles = ["sample_maps/1061593 katagiri - Urushi/audio.mp3"]
+name = "Urushi"  # TODO need to update this if used for more than one song
+starRatings = [5.0]
+assert(len(audioFiles) == len(starRatings))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
+onsetThresholds = [0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.11, 0.12, 0.15, 0.18, 0.21, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.6, 0.7, 0.8]  # required "confidence" for a prediction peak to be considered an onset
+prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFiles, starRatings)
+processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO Presumably this will throw exceptions for more than one song
+for h in range(len(audioFiles)):
+    for i in onsetThresholds:
+        newName = name + f" - T{i}"  # append threshold to name
+        controllers.onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFiles[h], newName, starRatings[h], i)
 
 print("got to end")

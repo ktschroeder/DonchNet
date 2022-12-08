@@ -2,7 +2,7 @@ import sys
 sys.path.append("C:/Users/Admin/Documents/GitHub/taiko_project")   # TODO cleaner way to do this?
 
 import os
-import map_to_json_converter
+from dataset_tools import map_to_json_converter
 from feature_extraction import audio_to_feats as atf
 # from dataset_tools import dataset_management as dm
 from dataset_tools import audio_converter as ac
@@ -134,4 +134,4 @@ def jointlyMakeJsonsAndMels():
 
 
 
-jointlyMakeJsonsAndMels()
+# jointlyMakeJsonsAndMels()

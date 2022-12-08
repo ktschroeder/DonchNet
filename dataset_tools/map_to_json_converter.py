@@ -1,5 +1,5 @@
 import json, os, unicodedata, re
-import SR_calculator
+from dataset_tools import SR_calculator
 
 def makeSafeFilename(name):  # taken from Django's slugify function
     # Normalizes string, converts to lowercase, removes non-alpha characters, and converts spaces to underscores.
