@@ -218,7 +218,86 @@ def batchGetMapFeats(mapFeatPaths):
         mapFeats.append([id, onsets, sr])
     return mapFeats
 
-def batchPrepareFeatsForModel(mapInfo, songFeats):  # xMaps, xAudios, yNotes = batchPrepareFeatsForModel(mapInfo, songFeats)
+def batchPrepareFeatsForModel(mapInfo, songFeats):  # mapInfo has tuples of id, onsets, notes, sr for each map. songFeats has 15x40 per onset. Need to make unrollings.
+
+    mapCount = len(mapInfo)
+
+    onsetCount = 0
+    for map in mapInfo:
+        onsetCount += len(map[1]) - 1  # -1 because the last onset in each map will have nothing to predict after it
+
+    pMapFeats = np.empty((onsetCount, unrollings, 8), dtype=float32)  # Everything here should be filled TODO check
+    pSongFeats = np.full((onsetCount, unrollings, 15, 40), config.pad)
+    
+    unrolling = 0  # index of unrolling we are on, of total: onsetCount * unrollings
+    # Stateless LSTM so should be fine to just mash all the unrollings together
+
+    mapPad = np.array([0,0,0,0,0,0,0,0])
+    for i, map in enumerate(mapInfo):
+        song = songFeats[i]
+        sr = map[3]
+
+        onsets = map[1]
+
+        rolledMapData = []
+        # don: 0
+        # kat: 2/8/10
+        # fdon: 4
+        # fkat: 6/12/14
+        for j, color in enumerate(map[2]):
+            color = int(color)
+            don = 0
+            kat = 0
+            fdon = 0
+            fkat = 0
+            if color == 0:
+                don = 1
+            elif color == 2 or color == 8 or color == 10:
+                kat = 1
+            elif color == 4:
+                fdon = 1
+            elif color == 6 or color == 12 or color == 14:
+                fkat = 1
+            else:
+                print(f"Found color (hitsound) {color} in map {map[0]}.")
+                assert(None)
+            assert(don or kat or fdon or fkat)
+
+            isFirstOnset = 0
+            if j == 0:
+                isFirstOnset = 1
+
+            timeFromPrev, timeToNext
+
+            if j == 0:
+                timeFromPrev = 0
+                timeToNext = onsets[j+1] - onsets[j]
+            elif j == len(onsets) - 1:
+                timeFromPrev = onsets[j] - onsets[j-1]
+                timeToNext = 0
+            else:
+                timeFromPrev = onsets[j] - onsets[j-1]
+                timeToNext = onsets[j+1] - onsets[j]
+
+            rolledMapData = rolledMapData.append(np.array(don, kat, fdon, fkat, timeFromPrev, timeToNext, isFirstOnset, sr))
+
+        # Now make unrollings from rolledMapData... TODO
+
+        
+
+            
+
+
+            
+
+        
+
+
+
+
+
+
+    #########################################
     mapCount = len(mapFeats)
     pMapFeats = np.full((mapCount, max_sequence_length), config.pad)  # TODO is -500 appropriate here?
     pSongFeats = np.full((mapCount, max_sequence_length, 15, 40), config.pad)  # incoming as (mapCount, max_sequence_length,15,40)
