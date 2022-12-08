@@ -8,5 +8,6 @@ data/misc/*
 data/prediction_maps/*
 data/old_prediction_maps/*
 models/*
+sample_maps/*
 */__pycache__
 __pycache__

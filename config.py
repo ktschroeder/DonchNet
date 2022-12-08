@@ -2,8 +2,8 @@
 import numpy as np
 
 audioLengthMaxSeconds = 240
-featureMainDirectory = "data/stored_feats2"
-datasetMainDirectory = "C:/Users/Admin/osu!/Songs"
+featureMainDirectory = "data/stored_feats"
+datasetMainDirectory = "C:/Users/Admin/osu!/Songs disabled"
 # datasetMainDirectory = "C:/Users/Admin/Documents/adhoc_thing"  # WARNING this will screw up normalization and bandMeans/bandStdevs. Only for debugging
 
 def determinePad():
