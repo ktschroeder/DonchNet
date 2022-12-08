@@ -354,13 +354,13 @@ def batchPrepareFeatsForModel(mapFeats, songFeats):
     
     for i in range(len(mapFeats)):
 
-        audioFrames = len(songFeats[i][1])
-
         map = mapFeats[i]
         onsets = map[1]  # time in ms of objects in map
         hitIndex = 0  # index of hitObject in the map (listed in variable: onsets)
         groundTruth = 0  # whether there is an object in this frame
         groundTruths = []
+
+        audioFrames = len(songFeats[i][1])
         for j in range(audioFrames * 10):  # for each millisecond
             if j / 10 >= max_sequence_length:
                 break

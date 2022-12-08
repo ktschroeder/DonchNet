@@ -2,6 +2,7 @@
 import numpy as np
 
 audioLengthMaxSeconds = 240
+colorUnrollings = 80
 featureMainDirectory = "data/stored_feats"
 datasetMainDirectory = "C:/Users/Admin/osu!/Songs disabled"
 # datasetMainDirectory = "C:/Users/Admin/Documents/adhoc_thing"  # WARNING this will screw up normalization and bandMeans/bandStdevs. Only for debugging
@@ -15,3 +16,10 @@ def determinePad():
 
 pad = determinePad()
 print(f"Determined pad to be {pad}.")
+
+
+# via .osu standard, hitsounds: 
+# don: 0
+# kat: 2/8/10
+# fdon: 4
+# fkat: 6/12/14

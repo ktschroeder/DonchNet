@@ -19,3 +19,17 @@ def jsonToFeats(file):
     
     id = makeSafeFilename(j["metadata"]["Title"].strip()) + '-' + makeSafeFilename(j["metadata"]["Creator"].strip()) + '-' + makeSafeFilename(j["metadata"]["Version"].strip())
     return id, onsets, sr
+
+
+def jsonToFeatsColor(file):
+    data = open(file,'rt').read()
+    j = json.loads(data)
+    onsets = []
+    notes = []
+    for i in range (len(j["hitobjects"])):
+        onsets.append(j["hitobjects"][i]["time"])  # offset in ms, currently ignoring type of object
+        notes.append(j["hitobjects"][i]["hitsound"])
+    sr = j["sr"]
+    
+    id = makeSafeFilename(j["metadata"]["Title"].strip()) + '-' + makeSafeFilename(j["metadata"]["Creator"].strip()) + '-' + makeSafeFilename(j["metadata"]["Version"].strip())
+    return id, onsets, notes, sr
