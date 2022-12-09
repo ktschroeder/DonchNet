@@ -224,12 +224,12 @@ def batchPrepareFeatsForModel(mapInfo, songFeats):  # mapInfo has tuples of id, 
 
     onsetCount = 0
     for map in mapInfo:
-        onsetCount += len(map[1]) - 1  # -1 because the last onset in each map will have nothing to predict after it
+        onsetCount += len(map[1])
 
     pMapFeats = np.empty((onsetCount, unrollings, 8), dtype=float32)  # Everything here should be filled TODO check
     pSongFeats = np.full((onsetCount, unrollings, 15, 40), config.pad)
     
-    unrolling = 0  # index of unrolling we are on, of total: onsetCount * unrollings
+    onsetIndex = 0  
     # Stateless LSTM so should be fine to just mash all the unrollings together
 
     mapPad = np.array([0,0,0,0,0,0,0,0])
@@ -281,8 +281,27 @@ def batchPrepareFeatsForModel(mapInfo, songFeats):  # mapInfo has tuples of id, 
 
             rolledMapData = rolledMapData.append(np.array(don, kat, fdon, fkat, timeFromPrev, timeToNext, isFirstOnset, sr))
 
-        # Now make unrollings from rolledMapData... TODO
+        # Now make unrollings from rolledMapData...
+        for j, item in enumerate(rolledMapData):
+            unrollingsSet = np.empty((unrollings, 8), dtype=float32)
+            for k in range(unrollings):  # 0 to 79
+                indexToGet = j - unrollings + k  # first is 0 - 80 + 0, through 0 - 80 + 79
+                if indexToGet < 0:
+                    unrollingsSet[k] = mapPad
+                else:
+                    assert(indexToGet < len(rolledMapData))
+                    unrollingsSet[k] = rolledMapData[indexToGet]
 
+            pMapFeats[onsetIndex] = unrollingsSet
+            onsetIndex += 1
+    
+    assert(onsetIndex == onsetCount)
+
+
+    # pMapFeats is ready. Now to handle pSongFeats... Do this in sync with pMapFeats
+
+
+            
         
 
             
