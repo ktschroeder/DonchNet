@@ -165,24 +165,28 @@ class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgar
         # Now we have mapinfo (id, onsets, notes, sr) and songFeats corresponding to onsets
 
         
-        
+
+
+        # Untested but perhaps good to go
         xMaps, xAudios, yNotes = batchPrepareFeatsForModel(mapInfo, songFeats)
 
-
-        assert(None) # TODO
+        xMaps = reshape(xMaps, (len(xMaps), config.colorUnrollings, 8, 1)).astype(float32)  # want |onsets|, 80, 4+4, 1. 4+4 is the 4 colors and 4 other map feats.
+        xAudios = reshape(xAudios, (len(xMaps), config.colorUnrollings, 15, 40, 1)).astype(float32)  # want |onsets|, 80, 15, 40, 1: onsets, unrollings, 1+2bookends, freq bands, 1.
+        yNotes = reshape(yNotes, (len(xMaps), 4)).astype(float32)  # want |onsets|, 4. 4 comes from the one-hot for don, kat, fdon, fkat.
+        
 
         # print("in generator: ", x.shape, y.shape, starRatings.shape)  # currently (17, 24000, 15, 40) (17, 24000) (17,)
     
-        x = reshape(x, (len(x), len(x[0]), len(x[0][0]), len(x[0][0][0]),1))  # 17, 24000, 15, 40, 1
-        y = y.reshape((len(y),len(y[0]),1,1))
-        x = x.astype(float32)
+        # x = reshape(x, (len(x), len(x[0]), len(x[0][0]), len(x[0][0][0]),1))           #  old: 17, 24000, 15, 40, 1
+        # y = y.reshape((len(y),len(y[0]),1,1))
+        # x = x.astype(float32)
         # starRatings = starRatings.reshape((len(starRatings), 1, 1))
 
         # process star ratings so they can be prepended properly before LSTMs
-        stars = np.empty((len(starRatings), max_sequence_length, 1), dtype=float32)
-        for i in range(len(stars)):
-            stars[i] = np.full((max_sequence_length, 1), starRatings[i])
-        starRatings = stars
+        # stars = np.empty((len(starRatings), max_sequence_length, 1), dtype=float32)
+        # for i in range(len(stars)):
+        #     stars[i] = np.full((max_sequence_length, 1), starRatings[i])
+        # starRatings = stars
 
         # return [x, starRatings], y
 
@@ -228,11 +232,14 @@ def batchPrepareFeatsForModel(mapInfo, songFeats):  # mapInfo has tuples of id, 
 
     pMapFeats = np.empty((onsetCount, unrollings, 8), dtype=float32)  # Everything here should be filled TODO check
     pSongFeats = np.full((onsetCount, unrollings, 15, 40), config.pad)
+    pNotes = np.empty((onsetCount, 4), dtype=float32)
     
     onsetIndex = 0  
     # Stateless LSTM so should be fine to just mash all the unrollings together
 
+
     mapPad = np.array([0,0,0,0,0,0,0,0])
+    audioPad = np.full((15, 40), config.pad)
     for i, map in enumerate(mapInfo):
         song = songFeats[i]
         sr = map[3]
@@ -240,6 +247,7 @@ def batchPrepareFeatsForModel(mapInfo, songFeats):  # mapInfo has tuples of id, 
         onsets = map[1]
 
         rolledMapData = []
+        rolledSongData = []
         # don: 0
         # kat: 2/8/10
         # fdon: 4
@@ -259,7 +267,7 @@ def batchPrepareFeatsForModel(mapInfo, songFeats):  # mapInfo has tuples of id, 
             elif color == 6 or color == 12 or color == 14:
                 fkat = 1
             else:
-                print(f"Found color (hitsound) {color} in map {map[0]}.")
+                print(f"Found unexpected color (hitsound) {color} in map {map[0]}.")
                 assert(None)
             assert(don or kat or fdon or fkat)
 
@@ -280,85 +288,30 @@ def batchPrepareFeatsForModel(mapInfo, songFeats):  # mapInfo has tuples of id, 
                 timeToNext = onsets[j+1] - onsets[j]
 
             rolledMapData = rolledMapData.append(np.array(don, kat, fdon, fkat, timeFromPrev, timeToNext, isFirstOnset, sr))
+            pNotes[j] = np.array(don, kat, fdon, fkat)
+
 
         # Now make unrollings from rolledMapData...
         for j, item in enumerate(rolledMapData):
-            unrollingsSet = np.empty((unrollings, 8), dtype=float32)
+            mapUnrollingsSet = np.empty((unrollings, 8), dtype=float32)
+            songUnrollingsSet = np.empty((unrollings, 15, 40), dtype=float32)
             for k in range(unrollings):  # 0 to 79
                 indexToGet = j - unrollings + k  # first is 0 - 80 + 0, through 0 - 80 + 79
                 if indexToGet < 0:
-                    unrollingsSet[k] = mapPad
+                    mapUnrollingsSet[k] = mapPad
+                    songUnrollingsSet[k] = audioPad
                 else:
                     assert(indexToGet < len(rolledMapData))
-                    unrollingsSet[k] = rolledMapData[indexToGet]
+                    mapUnrollingsSet[k] = rolledMapData[indexToGet]
+                    songUnrollingsSet[k] = song[indexToGet]
 
-            pMapFeats[onsetIndex] = unrollingsSet
+            pMapFeats[onsetIndex] = mapUnrollingsSet
+            pSongFeats[onsetIndex] = songUnrollingsSet
             onsetIndex += 1
-    
-    assert(onsetIndex == onsetCount)
 
+    assert(onsetIndex == onsetCount)      
 
-    # pMapFeats is ready. Now to handle pSongFeats... Do this in sync with pMapFeats
-
-
-            
-        
-
-            
-
-
-            
-
-        
-
-
-
-
-
-
-    #########################################
-    mapCount = len(mapFeats)
-    pMapFeats = np.full((mapCount, max_sequence_length), config.pad)  # TODO is -500 appropriate here?
-    pSongFeats = np.full((mapCount, max_sequence_length, 15, 40), config.pad)  # incoming as (mapCount, max_sequence_length,15,40)
-    starRatings = np.empty(mapCount, dtype=float32)
-    
-    for i in range(len(mapFeats)):
-
-        audioFrames = len(songFeats[i][1])
-
-        map = mapFeats[i]
-        onsets = map[1]  # time in ms of objects in map
-        hitIndex = 0  # index of hitObject in the map (listed in variable: onsets)
-        groundTruth = 0  # whether there is an object in this frame
-        groundTruths = []
-        for j in range(audioFrames * 10):  # for each millisecond
-            if j / 10 >= max_sequence_length:
-                break
-            if hitIndex < len(onsets) and int(onsets[hitIndex]) <= j:  # if there is a hit
-                hitIndex += 1
-                groundTruth = 1
-            if j % 10 == 9:  # at every 10 milliseconds we summarize the 10ms frame and reset
-                groundTruths.append(groundTruth)
-                # temp += groundTruth
-                groundTruth = 0
-        # print(temp, "hits")
-        for j in range(len(groundTruths), max_sequence_length):
-            groundTruths.append(0) # TODO this was -999, could be -1. 0 okay?
-        # pMapFeats.append(tf.convert_to_tensor(groundTruths, dtype=tf.int32))
-        pMapFeats[i] = groundTruths
-        starRatings[i] = float32(map[2])  # star rating of map (difficulty)
-            
-        trimmedSongFeats = songFeats[i][1][:min(len(songFeats[i][1]), max_sequence_length)]  # trim to max sequence length if applicable
-        pad = []
-        for k in range (max_sequence_length - len(trimmedSongFeats)):
-            # print("got in with", max_sequence_length - len(trimmedSongFeats))
-            pad.append(np.full((15,40), config.pad))
-        # print(pad)
-        if(len(pad) > 0):
-            trimmedSongFeats = np.vstack((trimmedSongFeats, pad))
-        pSongFeats[i] = trimmedSongFeats
-
-    return xMaps, xAudios, yNotes  # previously pMapFeats, pSongFeats, starRatings
+    return pMapFeats, pSongFeats, pNotes  # previously pMapFeats, pSongFeats, starRatings
 
 def createColorModel():
 
@@ -373,7 +326,7 @@ def createColorModel():
     learning_rate = 0.1  # was 0.01 originally
     hidden_units_lstm = 128
 
-    generator_batch_size = 2  # TODO pick near as large as possible for speed? This results in trying to allocate the tensor in memory for some reason. 3 is OOM.
+    generator_batch_size = 2  # TODO pick near as large as possible for speed? This results in trying to allocate the tensor in memory for some reason. 3 is OOM for onset.
     #
     #
     ######################################################################################################
@@ -389,12 +342,12 @@ def createColorModel():
 
     clear_session()
 
-    mainInput = tf.keras.Input(shape=(unrollings,8))  # 8: don, fdon, kat, fkat, timeFromPrev, timeToNext, isFirst, SR (TODO divide SR by 10 to normalize some)
+    mainInput = tf.keras.Input(shape=(unrollings,8,1))  # 8: don, fdon, kat, fkat, timeFromPrev, timeToNext, isFirst, SR (TODO divide SR by 10 to normalize some)
     audioInput = tf.keras.Input(shape=(unrollings,15,40,1))
     
 
     # base_maps = tf.keras.layers.Lambda(context)(input)
-    base_maps = TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',data_format='channels_last'))(audioInput)
+    base_maps = TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',data_format='channels_last'))(audioInput)  # TODO could get these pre-trained via onset model? Maybe not worth it
     base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps) # TODO is pooling correct with respect to dimensions?
     base_maps = TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same',data_format='channels_last'))(base_maps)
     base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
@@ -405,7 +358,7 @@ def createColorModel():
     base_maps = LSTM(hidden_units_lstm, return_sequences=True)(merged)
     base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units_lstm))(base_maps)  
     base_maps = LSTM(hidden_units_lstm, return_sequences=False)(base_maps)  
-    base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units_lstm))(base_maps)   # TODO noise shape may be incorrect now ***************************************
+    base_maps = Dropout(0.5)(base_maps)   # TODO noise shape may be incorrect now *************************************** noise_shape=(None,1,hidden_units_lstm
     # base_maps = Dense(256, activation='relu')(base_maps)
     # base_maps = Dropout(0.5)(base_maps)
     # base_maps = Dense(128, activation='relu')(base_maps)
@@ -436,7 +389,11 @@ def createColorModel():
 
 
     color_model.save("models/color")
-    # TODO save training history to be viewed later
+    
 
     with open('models/history.pickle', 'wb') as handle:
         pickle.dump(history, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+createColorModel()
+print("Got to end of color model controller")
