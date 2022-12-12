@@ -396,12 +396,12 @@ def createConvLSTM():
     ######################################################################################################
     #
     #
-    dataProportion = 0.7  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
-    epochs = 30
+    dataProportion = 0.5  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
+    epochs = 50
 
     gradients_per_update = 10  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
     batch_size = 5  # TODO really cutting it close here, can only half one more time # This now seems to have no effect
-    learning_rate = 0.1  # was 0.01 originally
+    learning_rate = 0.01  # was 0.01 originally
     hidden_units_lstm = 200
 
     generator_batch_size = 2  # TODO pick near as large as possible for speed? This results in trying to allocate the tensor in memory for some reason. 3 is OOM.
@@ -484,7 +484,7 @@ def createConvLSTM():
     ga_model.compile(  #ga for gradient accumulation
         loss = 'binary_crossentropy',
         # metrics = ['accuracy'],
-        optimizer = tf.keras.optimizers.SGD(momentum=0.01, nesterov=True, learning_rate=learning_rate),
+        optimizer = tf.keras.optimizers.SGD(momentum=0.9, nesterov=True, learning_rate=learning_rate),
         metrics = tf.keras.metrics.AUC(curve='PR') )
 
     checkpoint_filepath = 'models/checkpoint'

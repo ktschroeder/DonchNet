@@ -325,7 +325,7 @@ def createColorModel():
     epochs = 10
 
     batch_size = 1  # as it stands, color model updates after every map (which consists of many onsets, granted. But they are all from same song.)
-    learning_rate = 0.0001  # was 0.01 originally
+    learning_rate = 0.000001  # was 0.01 originally
     hidden_units_lstm = 128 #128
 
     generator_batch_size = 1  # TODO pick near as large as possible for speed? This results in trying to allocate the tensor in memory for some reason. 3 is OOM for onset.
@@ -365,7 +365,7 @@ def createColorModel():
     # base_maps = Dropout(0.5)(base_maps)
     # base_maps = Dense(128, activation='relu')(base_maps)
     # base_maps = Dropout(0.5)(base_maps) 
-    base_maps = Dense(64, activation='relu')(base_maps)
+    base_maps = Dense(32, activation='relu')(base_maps)
     base_maps = Dropout(0.5)(base_maps) 
 
     base_maps = Dense(4, activation='softmax')(base_maps)
@@ -399,5 +399,27 @@ def createColorModel():
         pickle.dump(history, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-createColorModel()
+
+
+# createColorModel()
+
+
+model = tf.keras.models.load_model("models/color")
+
+audioFiles = ["sample_onset_maps/urushi_t008/map.osu/audio.mp3"]
+mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
+name = "Urushi"  # TODO need to update this if used for more than one song
+starRatings = [5.0]
+assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
+
+prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings)
+for h in range(len(audioFiles)):
+    controllers.color_generate_taiko_map.convertOnsetPredictionToMap(prediction, mapfiles[h], audioFiles[h], name, starRatings[h])
+
+
+
+
+
+
+
 print("Got to end of color model controller")

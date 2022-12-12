@@ -36,7 +36,7 @@ def createMap(onsets, audioFile, name, starRating):
     if not os.path.exists(path):
         os.makedirs(path)
 
-    shutil.copyfile(audioFile, f"{path}/audio.wav")
+    shutil.copyfile(audioFile, f"{path}/{os.path.basename(audioFile)}")  # TODO untested
 
     osuFile = generate_osu_file.generateOsuFile(onsets, name, starRating)
 
