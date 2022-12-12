@@ -413,8 +413,9 @@ starRatings = [5.0]
 assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
 
 prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings)
-for h in range(len(audioFiles)):
-    controllers.color_generate_taiko_map.convertOnsetPredictionToMap(prediction, mapfiles[h], audioFiles[h], name, starRatings[h])
+print(prediction)
+# for h in range(len(audioFiles)):
+#     controllers.color_generate_taiko_map.convertOnsetPredictionToMap(prediction, mapfiles[h], audioFiles[h], name, starRatings[h])
 
 
 

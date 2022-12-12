@@ -4,7 +4,6 @@ data/stored_feats/*
 data/stored_feats2/*
 data/holdout_feats/*
 data/temp/*
-data/misc/*
 data/prediction_maps/*
 data/old_prediction_maps/*
 models/*
