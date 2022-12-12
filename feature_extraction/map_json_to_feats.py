@@ -23,6 +23,7 @@ def jsonToFeats(file):
 
 def jsonToFeatsColor(file):
     data = open(file,'rt').read()
+    print(file)
     j = json.loads(data)
     onsets = []
     notes = []

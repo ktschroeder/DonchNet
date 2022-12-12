@@ -14,7 +14,7 @@ import os
 import feature_extraction.map_json_to_feats as jtf
 
 max_sequence_length = config.audioLengthMaxSeconds * 100  # 100 frames per second, or 10 ms per frame
-
+deltaTimeNormalizer = 200  # number that timeFromPrev and timeToNext are divided by to make them more suitable for learning. Arbitrary choice: very roughly average distance between 2 onsets
 
 
 
@@ -51,19 +51,16 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, SRs):  # mapInfo has tuples of
     for map in mapInfo:
         onsetCount += len(map[1])
 
-    pMapFeats = np.empty((onsetCount, unrollings, 8), dtype=float32)  # Everything here should be filled TODO check
-    pSongFeats = np.full((onsetCount, unrollings, 1+2*config.colorAudioBookendLength, 40), config.pad)
-    pNotes = np.empty((onsetCount, 4), dtype=float32)
+    pMapFeats = np.empty((onsetCount, 8), dtype=float32)  # Everything here should be filled TODO check
+    pSongFeats = np.full((onsetCount, 1+2*config.colorAudioBookendLength, 40), config.pad)
     
-    onsetIndex = 0  
-    # Stateless LSTM so should be fine to just mash all the unrollings together
-
+    onsetIndex = 0
 
     mapPad = np.array([0,0,0,0,0,0,0,0])
     audioPad = np.full((1+2*config.colorAudioBookendLength, 40), config.pad)
     for i, map in enumerate(mapInfo):
         song = songFeats[i]
-        sr = map[3]
+        sr = SRs[i]
 
         onsets = np.array(map[1]).astype(int)
 
@@ -73,28 +70,10 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, SRs):  # mapInfo has tuples of
         # fdon: 4
         # fkat: 6/12/14
         for j, color in enumerate(map[2]):
-            color = int(color)
-            don = 0
-            kat = 0
-            fdon = 0
-            fkat = 0
-            if color == 0:
-                don = 1
-            elif color == 2 or color == 8 or color == 10:
-                kat = 1
-            elif color == 4:
-                fdon = 1
-            elif color == 6 or color == 12 or color == 14:
-                fkat = 1
-            else:
-                print(f"Found unexpected color (hitsound) {color} in map {map[0]}.")
-                assert(None)
-            assert(don or kat or fdon or fkat)
 
             isFirstOnset = 0
             if j == 0:
                 isFirstOnset = 1
-
 
             if j == 0:
                 timeFromPrev = 0
@@ -106,94 +85,58 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, SRs):  # mapInfo has tuples of
                 timeFromPrev = onsets[j] - onsets[j-1]
                 timeToNext = onsets[j+1] - onsets[j]
 
-            rolledMapData.append(np.array([don, kat, fdon, fkat, timeFromPrev / deltaTimeNormalizer, timeToNext / deltaTimeNormalizer, isFirstOnset, sr]))
-            pNotes[j] = np.array([don, kat, fdon, fkat])
+            rolledMapData.append(np.array([0, 0, 0, 0, timeFromPrev / deltaTimeNormalizer, timeToNext / deltaTimeNormalizer, isFirstOnset, sr]))  # since we are predicting, all colors start 0
 
+        # # Now make unrollings from rolledMapData...
+        # for j, item in enumerate(rolledMapData):
+        #     mapUnrollingsSet = np.empty((unrollings, 8), dtype=float32)
+        #     songUnrollingsSet = np.empty((unrollings, 1+2*config.colorAudioBookendLength, 40), dtype=float32)
+        #     for k in range(unrollings):  # 0 to 79
+        #         indexToGet = j - unrollings + k  # first is 0 - 80 + 0, through 0 - 80 + 79
+        #         if indexToGet < 0:
+        #             mapUnrollingsSet[k] = mapPad
+        #             songUnrollingsSet[k] = audioPad
+        #         else:
+        #             assert(indexToGet < len(rolledMapData))
+        #             mapUnrollingsSet[k] = rolledMapData[indexToGet]
+        #             songUnrollingsSet[k] = song[1][indexToGet]
 
-        # Now make unrollings from rolledMapData...
-        for j, item in enumerate(rolledMapData):
-            mapUnrollingsSet = np.empty((unrollings, 8), dtype=float32)
-            songUnrollingsSet = np.empty((unrollings, 1+2*config.colorAudioBookendLength, 40), dtype=float32)
-            for k in range(unrollings):  # 0 to 79
-                indexToGet = j - unrollings + k  # first is 0 - 80 + 0, through 0 - 80 + 79
-                if indexToGet < 0:
-                    mapUnrollingsSet[k] = mapPad
-                    songUnrollingsSet[k] = audioPad
-                else:
-                    assert(indexToGet < len(rolledMapData))
-                    mapUnrollingsSet[k] = rolledMapData[indexToGet]
-                    songUnrollingsSet[k] = song[1][indexToGet]
+        #     pMapFeats[onsetIndex] = mapUnrollingsSet
+        #     pSongFeats[onsetIndex] = songUnrollingsSet
+        #     onsetIndex += 1
 
-            pMapFeats[onsetIndex] = mapUnrollingsSet
-            pSongFeats[onsetIndex] = songUnrollingsSet
-            onsetIndex += 1
-
-    assert(onsetIndex == onsetCount)     
-
-
-
-    return pMapFeats, pSongFeats
+    # assert(onsetIndex == onsetCount)     
 
 
 
+    return rolledMapData, song[1]
 
-class Custom_Prediction_Generator(keras.utils.Sequence): # via https://medium.com/@mrgarg.rajat/training-on-large-datasets-that-dont-fit-in-memory-in-keras-60a974785d71
 
-    def addContextAndTrim(self, x, onsets, bookendLength):
-    # x.reshape(())   (config.audioLengthMaxSeconds, 40)?
-        padding = np.full((1,40), config.pad, dtype=float32)  # TODO after normalization, this should be like -3 instead of -500. track minimum to determine this
-        context = bookendLength
-        window = 2*context + 1 # prepend and append context
-        # want to create input_shape=(max_sequence_length,15,40) from (max_sequence_length, 40)
-        out = np.zeros((len(onsets),window,40))
-        onsets = np.array(onsets).astype(int)
-        # #
-        truths = onsets // 10
 
-        for i, truth in enumerate(truths): # want: for each onset in onsets (need its corresponding index in x). Could scan and continue for misses.
-            bookended = np.zeros((window,40), dtype=float32)
-            for j in range (context*-1, context+1):
-                indexToGet = int(truth) + j  # if at start of audio this is negative in first half, if at end this is out of bounds positive in second half
-                if indexToGet < 0 or indexToGet >= len(x):
-                    bookended[j + context] = padding
-                else:
-                    bookended[j + context] = x[indexToGet]
-            out[i] = bookended
-        return out
-    
-    def __init__(self, mapFiles, audioFiles, SRs, generator_batch_size) :
-        self.mapFilenames = mapFiles
-        self.songFilenames = audioFiles
-        self.batch_size = generator_batch_size
-        self.SRs = SRs
-    
-    def __len__(self) :
-        return (np.ceil(len(self.songFilenames) / float(self.batch_size))).astype(np.int)
-  
-    def __getitem__(self, idx) :
-        max_sequence_length = config.audioLengthMaxSeconds * 100  # 100 frames per second, or 10 ms per frame  # TODO unless this is increased in prediction (could double it) longer songs may have odd behavior?
-        # print(f"---------:{idx} {self.batch_size}")
-        batch_maps = self.mapFilenames[idx * self.batch_size : (idx+1) * self.batch_size]
-        batch_songs = self.songFilenames[idx * self.batch_size : (idx+1) * self.batch_size]
-        batch_SRs = self.SRs[idx * self.batch_size : (idx+1) * self.batch_size]
 
-        # get onsets first and related info, including color
-        mapInfo = batchGetMapInfo(batch_maps)  # id, onsets, notes for each map. Does not include SR since we will take the user provided SR for prediction
 
-        # Processing this batch to prepare it for the model
-        bookendLength = config.colorAudioBookendLength  # number of frames to prepend and append on each side of central frame. For n, we have total 2n+1 frames.
-        songFeats = batchGetSongFeatsFromAudios(batch_songs)
 
-        for i, songFeat in enumerate(songFeats):  # TODO only do this for the feats matching with the onsets. Much faster
-            songFeat[1] = self.addContextAndTrim(songFeat[1], mapInfo[i][1], bookendLength)
+def addContextAndTrim(self, x, onsets, bookendLength):
+# x.reshape(())   (config.audioLengthMaxSeconds, 40)?
+    padding = np.full((1,40), config.pad, dtype=float32)  # TODO after normalization, this should be like -3 instead of -500. track minimum to determine this
+    context = bookendLength
+    window = 2*context + 1 # prepend and append context
+    # want to create input_shape=(max_sequence_length,15,40) from (max_sequence_length, 40)
+    out = np.zeros((len(onsets),window,40))
+    onsets = np.array(onsets).astype(int)
+    # #
+    truths = onsets // 10
 
-        # Untested but perhaps good to go
-        xMaps, xAudios = batchPrepareFeatsForModel(mapInfo, songFeats, batch_SRs)
-
-        xMaps = reshape(xMaps, (len(xMaps), config.colorUnrollings, 8)).astype(float32)  # want |onsets|, 80, 4+4, 1. 4+4 is the 4 colors and 4 other map feats.
-        xAudios = reshape(xAudios, (len(xMaps), config.colorUnrollings, 1+2*config.colorAudioBookendLength, 40, 1)).astype(float32)  # want |onsets|, 80, 15, 40, 1: onsets, unrollings, 1+2bookends, freq bands, 1.
-                
-        return [xMaps, xAudios], None
+    for i, truth in enumerate(truths): # want: for each onset in onsets (need its corresponding index in x). Could scan and continue for misses.
+        bookended = np.zeros((window,40), dtype=float32)
+        for j in range (context*-1, context+1):
+            indexToGet = int(truth) + j  # if at start of audio this is negative in first half, if at end this is out of bounds positive in second half
+            if indexToGet < 0 or indexToGet >= len(x):
+                bookended[j + context] = padding
+            else:
+                bookended[j + context] = x[indexToGet]
+        out[i] = bookended
+    return out
 
 
 def batchGetMapInfo(batch_maps):
@@ -206,12 +149,95 @@ def batchGetMapInfo(batch_maps):
         mapFeats.append([id, onsets, notes])
     return mapFeats
 
+mapPad = np.array([0,0,0,0,0,0,0,0])
+audioPad = np.full((1+2*config.colorAudioBookendLength, 40), config.pad)
+
+def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsdatascience.com/time-series-forecasting-with-recurrent-neural-networks-74674e289816
+    #prediction_list = xMaps #close_data[-unrollings:]
+    # TODO construct unrollings here per-onset
+    # predictedColors = np.empty((len(xMaps), 4))
+    
+    # for i, onsetUnrolling in enumerate(xMaps):
+    #     xMap = onsetUnrolling
+    #     xAudio = xAudios[i]
+
+    #     out = model.predict() #TODO
+
+    #     predictedColors[i] = out
+    #     # I would then need to add this prediction to the next 80 unrollings
+
+
+
+    originalMap = xMaps
+    originalAudio = xAudios
+    leadingSequenceMap = np.full((unrollings, 8), mapPad)
+    leadingSequenceAudio = np.full((unrollings, 1+2*config.colorAudioBookendLength, 40), audioPad)
+
+    colorPredictions = []
+    
+    for i in range(len(xMaps)):
+        xMap = leadingSequenceMap[-unrollings:]  # x gets last 80 onsets
+        xAudio = leadingSequenceAudio[-unrollings:]  # x gets last 80 onsets
+
+        # x = x.reshape((1, unrollings, 1))
+
+        out = model.predict([xMap, xAudio], verbose=1)#[0][0]
+
+        # update leading sequences with new onset based on the predicted color combined with original data
+        colorPrediction = solidifyColorPrediction(out)
+        colorPredictions.append(colorPrediction)
+
+        newOnsetMap = np.append(colorPrediction, originalMap[i][4], originalMap[i][5], originalMap[i][6], originalMap[i][7])
+        newOnsetAudio = originalAudio[i]
+
+        leadingSequenceMap = np.append(leadingSequenceMap, newOnsetMap)
+        leadingSequenceAudio = np.append(leadingSequenceAudio, newOnsetAudio)
+
+    assert(len(colorPredictions) == len(xMaps))
+    return colorPredictions
+
+
+def solidifyColorPrediction(out):
+    don = [1,0,0,0]
+    kat = [0,1,0,0]
+    fdon = [0,0,1,0]
+    fkat = [0,0,0,1]
+    objects = [don,kat,fdon,fkat]
+
+    assert(len(out) == 4)
+    color = np.argmax(out)
+    
+    return objects[color]
+
+
 def makePredictionFromMapAndAudio(model, mapFiles, audioFiles, SRs): # returns prediction from model. in: model, mapFiles, audioFiles, starRatings
     
-    generator_batch_size = 1  # don't confuse this with proportion of data used, like in training. Must be an int
-    my_prediction_batch_generator = Custom_Prediction_Generator(mapFiles, audioFiles, SRs, generator_batch_size)
+    # get onsets first and related info, including color
+    mapInfo = batchGetMapInfo(mapFiles)  # id, onsets, notes for each map. Does not include SR since we will take the user provided SR for prediction
+    unrollings = config.colorUnrollings
 
-    prediction = model.predict(my_prediction_batch_generator, batch_size=generator_batch_size, verbose=1)
+    # Processing this batch to prepare it for the model
+    bookendLength = config.colorAudioBookendLength  # number of frames to prepend and append on each side of central frame. For n, we have total 2n+1 frames.
+    songFeats = batchGetSongFeatsFromAudios(audioFiles)
+
+    for i, songFeat in enumerate(songFeats):  # TODO only do this for the feats matching with the onsets. Much faster
+        songFeat[1] = addContextAndTrim(songFeat[1], mapInfo[i][1], bookendLength)
+
+    # Untested but perhaps good to go
+    xMaps, xAudios = batchPrepareFeatsForModel(mapInfo, songFeats, SRs)  # # everything should be same as color training, except all notes are colorless and we provided SR
+
+    prediction = None
+
+    xMaps = reshape(xMaps, (len(xMaps), 8)).astype(float32)  # want |onsets|, 80, 4+4, 1. 4+4 is the 4 colors and 4 other map feats.
+    xAudios = reshape(xAudios, (len(xMaps), 1+2*config.colorAudioBookendLength, 40, 1)).astype(float32)  # want |onsets|, 80, 15, 40, 1: onsets, unrollings, 1+2bookends, freq bands, 1.
+          
+    assert(len(audioFiles) == 1)  # All the onsets are mashed together in one list, would need to separate them by song to support several songs
+    for i in range(len(audioFiles)):
+        prediction = predict(unrollings, model, xMaps, xAudios)
+    # prediction = model.predict(my_prediction_batch_generator, batch_size=generator_batch_size, verbose=1)
+
+    print(prediction)
+    print("Got to end of prediction")
 
     with open('models/prediction.pickle', 'wb') as handle:
         pickle.dump(prediction, handle, protocol=pickle.HIGHEST_PROTOCOL)

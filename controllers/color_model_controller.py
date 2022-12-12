@@ -48,6 +48,8 @@ import tensorflow.keras.backend as K
 from tensorflow.keras.utils import Sequence
 from tensorflow.keras.optimizers import Optimizer
 
+from controllers import color_predict
+
 import config
 
 from sklearn.utils import shuffle
