@@ -168,7 +168,7 @@ def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsd
     #     predictedColors[i] = out
     #     # I would then need to add this prediction to the next 64 unrollings
 
-
+    includeAudioFeats = config.includeAudioFeatsInColorModel
 
     originalMap = xMaps
     originalAudio = xAudios
@@ -189,10 +189,12 @@ def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsd
         # print(leadingSequenceMap.shape)
 
         leadingSequenceMap = np.append(leadingSequenceMap, reshape(originalMap[i], (1, 8)), axis=0)
-        leadingSequenceAudio = np.append(leadingSequenceAudio, reshape(originalAudio[i], (1, 1+2*config.colorAudioBookendLength, 40)), axis=0)
+        if includeAudioFeats:
+            leadingSequenceAudio = np.append(leadingSequenceAudio, reshape(originalAudio[i], (1, 1+2*config.colorAudioBookendLength, 40)), axis=0)
 
         xMap = leadingSequenceMap[-(unrollings+1):]  # x gets last 64 onsets
-        xAudio = leadingSequenceAudio[-(unrollings+1):]  # x gets last 64 onsets
+        if includeAudioFeats:
+            xAudio = leadingSequenceAudio[-(unrollings+1):]  # x gets last 64 onsets
 
         # xMap[-1]
 
@@ -200,7 +202,8 @@ def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsd
         # print(xMap.shape)
 
         xMap = reshape(xMap, (1, unrollings+1, 8))  # model expects input in batch form, shapes get wonky if no extra first dimension
-        xAudio = reshape(xAudio, (1, unrollings+1, 1+2*config.colorAudioBookendLength, 40))
+        if includeAudioFeats:
+            xAudio = reshape(xAudio, (1, unrollings+1, 1+2*config.colorAudioBookendLength, 40))
 
         # print("Shape of xMap: ")
         # print(xMap.shape)
@@ -209,7 +212,10 @@ def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsd
 
         # x = x.reshape((1, unrollings, 1))
 
-        out = model.predict([xMap, xAudio], verbose=0)#[0][0]  # if verbose, prints for every call to model.predict
+        if includeAudioFeats:
+            out = model.predict([xMap, xAudio], verbose=0)#[0][0]  # if verbose, prints for every call to model.predict
+        else:
+            out = model.predict([xMap], verbose=0)
 
         # update leading sequences with new onset based on the predicted color combined with original data
         colorPrediction = solidifyColorPrediction(out[0])  # extra dimension in output, again because things are in batch form

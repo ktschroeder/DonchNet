@@ -144,17 +144,19 @@ class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgar
             out[i] = bookended
         return out
     
-    def __init__(self, songFilenames, mapFilenames, batch_size, hesitancy) :
+    def __init__(self, songFilenames, mapFilenames, batch_size, hesitancy, useAudio) :
         self.songFilenames = songFilenames
         self.mapFilenames = mapFilenames
         self.batch_size = batch_size
         self.hesitancy = hesitancy
+        self.useAudio = useAudio
     
     def __len__(self) :
         return (np.ceil(len(self.songFilenames) / float(self.batch_size))).astype(np.int)
   
     def __getitem__(self, idx) :
-        batch_songs = self.songFilenames[idx * self.batch_size : (idx+1) * self.batch_size]
+        if self.useAudio:
+            batch_songs = self.songFilenames[idx * self.batch_size : (idx+1) * self.batch_size]
         batch_maps = self.mapFilenames[idx * self.batch_size : (idx+1) * self.batch_size]
 
         # get onsets first and related info, including color
@@ -164,11 +166,12 @@ class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgar
 
         # Processing this batch to prepare it for the model
         bookendLength = config.colorAudioBookendLength  # number of frames to prepend and append on each side of central frame. For n, we have total 2n+1 frames.
-        songFeats = batchGetSongFeats(batch_songs)
-        assert(len(songFeats) == len(mapInfo))
+        if self.useAudio:
+            songFeats = batchGetSongFeats(batch_songs)
+            assert(len(songFeats) == len(mapInfo))
 
-        for i, songFeat in enumerate(songFeats):  # TODO only do this for the feats matching with the onsets. Much faster
-            songFeat[1] = self.addContextAndTrim(songFeat[1], mapInfo[i][1], bookendLength)
+            for i, songFeat in enumerate(songFeats):  # TODO only do this for the feats matching with the onsets. Much faster
+                songFeat[1] = self.addContextAndTrim(songFeat[1], mapInfo[i][1], bookendLength)
 
         # Now we have mapinfo (id, onsets, notes, sr) and songFeats corresponding to onsets
 
@@ -176,10 +179,14 @@ class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgar
 
 
         # Untested but perhaps good to go
-        xMaps, xAudios, yNotes = batchPrepareFeatsForModel(mapInfo, songFeats, self.hesitancy)
+        if self.useAudio:
+            xMaps, xAudios, yNotes = batchPrepareFeatsForModel(mapInfo, self.hesitancy, songFeats)
+        else:
+            xMaps, yNotes = batchPrepareFeatsForModel(mapInfo, self.hesitancy)
 
         xMaps = reshape(xMaps, (len(xMaps), config.colorUnrollings+1, 8)).astype(float32)  # want |onsets|, 80, 4+4, 1. 4+4 is the 4 colors and 4 other map feats.
-        xAudios = reshape(xAudios, (len(xMaps), config.colorUnrollings+1, 1+2*config.colorAudioBookendLength, 40, 1)).astype(float32)  # want |onsets|, 80, 15, 40, 1: onsets, unrollings, 1+2bookends, freq bands, 1.
+        if self.useAudio:
+            xAudios = reshape(xAudios, (len(xMaps), config.colorUnrollings+1, 1+2*config.colorAudioBookendLength, 40, 1)).astype(float32)  # want |onsets|, 80, 15, 40, 1: onsets, unrollings, 1+2bookends, freq bands, 1.
         yNotes = reshape(yNotes, (len(xMaps), 4)).astype(float32)  # want |onsets|, 4. 4 comes from the one-hot for don, kat, fdon, fkat.
         
 
@@ -198,8 +205,11 @@ class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgar
 
         # return [x, starRatings], y
 
+        if self.useAudio:
+            return [xMaps, xAudios], yNotes    
+        else:
+            return xMaps, yNotes
         
-        return [xMaps, xAudios], yNotes
         # return np.array([
         #     resize(imread('/content/all_images/' + str(file_name)), (80, 80, 3))
         #        for file_name in batch_x])/255.0, np.array(batch_y)
@@ -232,7 +242,7 @@ def batchGetMapFeats(mapFeatPaths):
         mapFeats.append([id, onsets, sr])
     return mapFeats
 
-def batchPrepareFeatsForModel(mapInfo, songFeats, hesitancy):  # mapInfo has tuples of id, onsets, notes, sr for each map. songFeats has 15x40 per onset. Need to make unrollings.
+def batchPrepareFeatsForModel(mapInfo, hesitancy, songFeats = None):  # mapInfo has tuples of id, onsets, notes, sr for each map. songFeats has 15x40 per onset. Need to make unrollings.
 
     onsetCount = 0
     for map in mapInfo:
@@ -263,7 +273,8 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, hesitancy):  # mapInfo has tup
     colorIndex = -1  # hack for hesitancy
     pNotesIndex = 0
     for i, map in enumerate(mapInfo):
-        song = songFeats[i]
+        if songFeats:
+            song = songFeats[i]
         sr = map[3]
 
         onsets = np.array(map[1]).astype(int)
@@ -335,25 +346,32 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, hesitancy):  # mapInfo has tup
                 indexToGet = j - (unrollings+1) + k  # first is 0 - 80 + 0, through 0 - 80 + 79
                 if indexToGet < 0:
                     mapUnrollingsSet[k] = mapPad
-                    songUnrollingsSet[k] = audioPad
+                    if songFeats:
+                        songUnrollingsSet[k] = audioPad
                 elif indexToGet == unrollings:  # this is the onset we would like to predict a color for
                     mapData = rolledMapData[indexToGet]
                     assert(len(mapData) == 8)
                     uncoloredMapData = np.append([-1,-1,-1,-1], mapData[4:])  # combine colorless with last 4 elements of genuine map data
                     mapUnrollingsSet[k] = uncoloredMapData
-                    songUnrollingsSet[k] = song[1][indexToGet]
+                    if songFeats:
+                        songUnrollingsSet[k] = song[1][indexToGet]
                 else:
                     assert(indexToGet < len(rolledMapData))
                     mapUnrollingsSet[k] = rolledMapData[indexToGet]
-                    songUnrollingsSet[k] = song[1][indexToGet]
+                    if songFeats:
+                        songUnrollingsSet[k] = song[1][indexToGet]
 
             pMapFeats[onsetIndex] = mapUnrollingsSet
-            pSongFeats[onsetIndex] = songUnrollingsSet
+            if songFeats:
+                pSongFeats[onsetIndex] = songUnrollingsSet
             onsetIndex += 1
 
     assert(onsetIndex == goAheads)      
 
-    return pMapFeats, pSongFeats, pNotes  # previously pMapFeats, pSongFeats, starRatings
+    if songFeats:
+        return pMapFeats, pSongFeats, pNotes  # previously pMapFeats, pSongFeats, starRatings
+    else:
+        return pMapFeats, pNotes
 
 def initializer():
     return tf.keras.initializers.RandomNormal(mean=0., stddev=0.05)
@@ -364,15 +382,19 @@ def createColorModel():
     #
     #
     dataProportion = 0.1  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
-    epochs = 50
-    hesitancy = 0.005  # probabaility each onset will be considered. The idea is to take only a few onsets from each map, to prevent overfitting. 1000 onsets in a map * 0.005 ==> ~5 onsets
+    epochs = 300
+    hesitancy = 0.01  # probabaility each onset will be considered. The idea is to take only a few onsets from each map, to prevent overfitting. 1000 onsets in a map * 0.005 ==> ~5 onsets
                       # in all cases, at least one onset is taken from each map considered (for stability)
+
+    includeAudioFeats = config.includeAudioFeatsInColorModel  # whether to include audio feats in the model
 
     batch_size = 1  # as it stands, color model updates after every map (which consists of many onsets, granted. But they are all from same song.)
     # learning_rate = 0.00001  # was 0.01 originally. 0.00001 also an option.
     hidden_units_lstm = 128 #128
 
     generator_batch_size = 1  # TODO pick near as large as possible for speed? This results in trying to allocate the tensor in memory for some reason. 3 is OOM for onset.
+        # TODO increasing this causes assertion errors related to goAheads
+
     #
     #
     ######################################################################################################
@@ -382,26 +404,30 @@ def createColorModel():
     print(f"Color training will use {len(X_train_filenames)} maps and validation will use {len(X_val_filenames)} maps, via dataProportion {dataProportion}.")
     
     
-    my_training_batch_generator = My_Custom_Generator(X_train_filenames, y_train_filenames, generator_batch_size, hesitancy)
-    my_validation_batch_generator = My_Custom_Generator(X_val_filenames, y_val_filenames, generator_batch_size, hesitancy)  # inappropriate to use randomness in validation?
+    my_training_batch_generator = My_Custom_Generator(X_train_filenames, y_train_filenames, generator_batch_size, hesitancy, includeAudioFeats)
+    my_validation_batch_generator = My_Custom_Generator(X_val_filenames, y_val_filenames, generator_batch_size, hesitancy, includeAudioFeats)  # inappropriate to use randomness in validation?
 
 
     clear_session()
 
     mainInput = tf.keras.Input(shape=(unrollings+1,8))  # 8: don, fdon, kat, fkat, timeFromPrev, timeToNext, isFirst, SR (TODO divide SR by 10 to normalize some)
-    audioInput = tf.keras.Input(shape=(unrollings+1,1+2*config.colorAudioBookendLength,40,1))
     
+    
+    if includeAudioFeats:
+        audioInput = tf.keras.Input(shape=(unrollings+1,1+2*config.colorAudioBookendLength,40,1))
+        # base_maps = tf.keras.layers.Lambda(context)(input)
+        base_maps = TimeDistributed(Conv2D(10, (3,3),activation='relu', padding='same',data_format='channels_last',kernel_initializer=initializer()))(audioInput)  # TODO could get these pre-trained via onset model? Maybe not worth it
+        base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps) # TODO is pooling correct with respect to dimensions?
+        base_maps = TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same',data_format='channels_last',kernel_initializer=initializer()))(base_maps)
+        base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
+        base_maps = TimeDistributed(Flatten())(base_maps) # see above notes, does this overly flatten temporal?
 
-    # base_maps = tf.keras.layers.Lambda(context)(input)
-    base_maps = TimeDistributed(Conv2D(10, (3,3),activation='relu', padding='same',data_format='channels_last',kernel_initializer=initializer()))(audioInput)  # TODO could get these pre-trained via onset model? Maybe not worth it
-    base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps) # TODO is pooling correct with respect to dimensions?
-    base_maps = TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same',data_format='channels_last',kernel_initializer=initializer()))(base_maps)
-    base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
-    base_maps = TimeDistributed(Flatten())(base_maps) # see above notes, does this overly flatten temporal?
+        merged = tf.keras.layers.Concatenate()([mainInput, base_maps])
+        lstmBase = merged
+    else:
+        lstmBase = mainInput
 
-    merged = tf.keras.layers.Concatenate()([mainInput, base_maps])
-
-    base_maps = LSTM(hidden_units_lstm, return_sequences=True,kernel_initializer=initializer())(merged)
+    base_maps = LSTM(hidden_units_lstm, return_sequences=True,kernel_initializer=initializer())(lstmBase)
     base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units_lstm))(base_maps)  
     base_maps = LSTM(hidden_units_lstm, return_sequences=False,kernel_initializer=initializer())(base_maps)  
     base_maps = Dropout(0.5)(base_maps)   # TODO noise shape may be incorrect now *************************************** noise_shape=(None,1,hidden_units_lstm
@@ -415,7 +441,10 @@ def createColorModel():
 
     base_maps = Dense(4, activation='softmax',kernel_initializer=initializer())(base_maps)
 
-    color_model = keras.Model(inputs=[mainInput, audioInput], outputs=[base_maps])
+    if includeAudioFeats:
+        color_model = keras.Model(inputs=[mainInput, audioInput], outputs=[base_maps])
+    else:
+        color_model = keras.Model(inputs=[mainInput], outputs=[base_maps])
 
     # bind all
     color_model.compile(  #ga for gradient accumulation
@@ -447,30 +476,38 @@ def createColorModel():
 
 
 
-# createColorModel()
+createColorModel()
 
 # print("Training finished...")
 
 ##################
 
-model = tf.keras.models.load_model("models/color")
+# model = tf.keras.models.load_model("models/color")
 
-# audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
-# mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
+# # audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
+# # mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
 
-audioFiles = ["sample_maps/1061593 katagiri - Urushi/audio.mp3"]
-mapFiles = ["sample_maps/1061593 katagiri - Urushi/katagiri - Urushi (WTHBRO) [Muzukashii].osu"]
-starRatings = [3.75]  # local SR of Urushi muzu
+# # audioFiles = ["sample_maps/1061593 katagiri - Urushi/audio.mp3"]
+# # mapFiles = ["sample_maps/1061593 katagiri - Urushi/katagiri - Urushi (WTHBRO) [Muzukashii].osu"]
+# # starRatings = [3.75]  # local SR of Urushi muzu
 
-name = "Urushi"  # TODO need to update this if used for more than one song
+# audioFiles = ["sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.mp3"]
+# mapFiles = ["sample_maps/481954 9mm Parabellum Bullet - Inferno/9mm Parabellum Bullet - Inferno (Nofool) [Inner Oni].osu"]
+# starRatings = [5.5]
 
-assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
+# # audioFiles = ["sample_maps/1041076 MYUKKE - OCCHOCO-REST-LESS/audio.mp3"]
+# # mapFiles = ["sample_maps/1041076 MYUKKE - OCCHOCO-REST-LESS/MYUKKE. - OCCHOCO-REST-LESS (Jaye) [Oni].osu"]
+# # starRatings = [4.5]
 
-prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings)
-# expecting prediction in form: [[0,0,1,0],[0,1,0,0], ... ] where each quadruplet is the color of the respective onset
+# name = "bullet"  # TODO need to update this if used for more than one song
 
-from controllers import color_generate_taiko_map
-color_generate_taiko_map.convertColorPredictionToMap(prediction, audioFiles[0], mapFiles[0], name + f" color SR {starRatings[0]}")
+# assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
+
+# prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings)
+# # expecting prediction in form: [[0,0,1,0],[0,1,0,0], ... ] where each quadruplet is the color of the respective onset
+
+# from controllers import color_generate_taiko_map
+# color_generate_taiko_map.convertColorPredictionToMap(prediction, audioFiles[0], mapFiles[0], name + f" color SR {starRatings[0]}")
 
 ##################
 
