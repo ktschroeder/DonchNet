@@ -369,7 +369,7 @@ def createColorModel():
                       # in all cases, at least one onset is taken from each map considered (for stability)
 
     batch_size = 1  # as it stands, color model updates after every map (which consists of many onsets, granted. But they are all from same song.)
-    learning_rate = 0.00001  # was 0.01 originally. 0.00001 also an option.
+    # learning_rate = 0.00001  # was 0.01 originally. 0.00001 also an option.
     hidden_units_lstm = 128 #128
 
     generator_batch_size = 1  # TODO pick near as large as possible for speed? This results in trying to allocate the tensor in memory for some reason. 3 is OOM for onset.
@@ -391,27 +391,35 @@ def createColorModel():
     mainInput = tf.keras.Input(shape=(unrollings+1,8))  # 8: don, fdon, kat, fkat, timeFromPrev, timeToNext, isFirst, SR (TODO divide SR by 10 to normalize some)
     audioInput = tf.keras.Input(shape=(unrollings+1,1+2*config.colorAudioBookendLength,40,1))
     
+    from keras.layers import LeakyReLU
+    lralpha = 0.05  # leakyRelu alpha
 
+    
     # base_maps = tf.keras.layers.Lambda(context)(input)
-    base_maps = TimeDistributed(Conv2D(10, (3,3),activation='relu', padding='same',data_format='channels_last',kernel_initializer=initializer()))(audioInput)  # TODO could get these pre-trained via onset model? Maybe not worth it
+    base_maps = TimeDistributed(Conv2D(10, (3,3), padding='same',data_format='channels_last',kernel_initializer=initializer()))(audioInput)  # TODO could get these pre-trained via onset model? Maybe not worth it
+    base_maps = TimeDistributed(LeakyReLU(lralpha))(base_maps)
     base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps) # TODO is pooling correct with respect to dimensions?
-    base_maps = TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same',data_format='channels_last',kernel_initializer=initializer()))(base_maps)
+    base_maps = TimeDistributed(Conv2D(20, (3,3), padding='same',data_format='channels_last',kernel_initializer=initializer()))(base_maps)
+    base_maps = TimeDistributed(LeakyReLU(lralpha))(base_maps)
     base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
     base_maps = TimeDistributed(Flatten())(base_maps) # see above notes, does this overly flatten temporal?
 
     merged = tf.keras.layers.Concatenate()([mainInput, base_maps])
 
     base_maps = LSTM(hidden_units_lstm, return_sequences=True,kernel_initializer=initializer())(merged)
+    base_maps = LeakyReLU(lralpha)(base_maps)
     base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units_lstm))(base_maps)  
     base_maps = LSTM(hidden_units_lstm, return_sequences=False,kernel_initializer=initializer())(base_maps)  
+    base_maps = LeakyReLU(lralpha)(base_maps)
     base_maps = Dropout(0.5)(base_maps)   # TODO noise shape may be incorrect now *************************************** noise_shape=(None,1,hidden_units_lstm
     # base_maps = Dense(256, activation='relu')(base_maps)
     # base_maps = Dropout(0.5)(base_maps)
     # base_maps = Dense(128, activation='relu')(base_maps)
     # base_maps = Dropout(0.5)(base_maps) 
 
-    # base_maps = Dense(32, activation='relu',kernel_initializer=initializer())(base_maps)
-    # base_maps = Dropout(0.5)(base_maps) 
+    base_maps = Dense(32,kernel_initializer=initializer())(base_maps)
+    base_maps = LeakyReLU(lralpha)(base_maps)
+    base_maps = Dropout(0.5)(base_maps) 
 
     base_maps = Dense(4, activation='softmax',kernel_initializer=initializer())(base_maps)
 
@@ -447,21 +455,21 @@ def createColorModel():
 
 
 
-# createColorModel()
+createColorModel()
 
 # print("Training finished...")
 
 ##################
 
-model = tf.keras.models.load_model("models/color")
+# model = tf.keras.models.load_model("models/color")
 
-audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
-mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
-name = "Urushi"  # TODO need to update this if used for more than one song
-starRatings = [5.0]
-assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
+# audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
+# mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
+# name = "Urushi"  # TODO need to update this if used for more than one song
+# starRatings = [5.0]
+# assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
 
-prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings)
+# prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings)
 
 ##################
 
