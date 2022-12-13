@@ -6,7 +6,7 @@ import shutil
 from misc_tools import color_generate_osu_file
 from scipy.signal import argrelextrema
 
-def convertOnsetPredictionToMap(prediction, audioFile, mapfile, name):
+def convertColorPredictionToMap(prediction, audioFile, mapfile, name):
     # expecting prediction in form: [[0,0,1,0],[0,1,0,0], ... ] where each quadruplet is the color of the respective onset
     if not os.path.exists("data"):
         os.makedirs("data")

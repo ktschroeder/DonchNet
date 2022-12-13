@@ -447,7 +447,7 @@ def createColorModel():
 
 
 
-createColorModel()
+# createColorModel()
 
 # print("Training finished...")
 
@@ -455,16 +455,22 @@ createColorModel()
 
 model = tf.keras.models.load_model("models/color")
 
-audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
-mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
+# audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
+# mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
+
+audioFiles = ["sample_maps/1061593 katagiri - Urushi/audio.mp3"]
+mapFiles = ["sample_maps/1061593 katagiri - Urushi/katagiri - Urushi (WTHBRO) [Muzukashii].osu"]
+starRatings = [3.75]  # local SR of Urushi muzu
+
 name = "Urushi"  # TODO need to update this if used for more than one song
-starRatings = [5.0]
+
 assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
 
 prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings)
 # expecting prediction in form: [[0,0,1,0],[0,1,0,0], ... ] where each quadruplet is the color of the respective onset
 
-controllers.convertColorPredictionToMap(prediction, audioFiles[0], mapFiles[0], starRatings[0], name + f" color SR {starRatings[0]}")
+from controllers import color_generate_taiko_map
+color_generate_taiko_map.convertColorPredictionToMap(prediction, audioFiles[0], mapFiles[0], name + f" color SR {starRatings[0]}")
 
 ##################
 

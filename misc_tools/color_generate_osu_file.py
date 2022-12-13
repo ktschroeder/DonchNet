@@ -12,7 +12,9 @@ def generateOsuFile(prediction, mapfile, name):
 
     # determine onsets from original (onset) map
     onsets = getOnsets(mapfile)
-    assert(len(onsets) == len(prediction))
+    print(len(onsets))
+    print(len(prediction))
+    # assert(len(onsets) == len(prediction))
 
     out = f'''osu file format v14
 
@@ -71,10 +73,11 @@ SliderTickRate:1
 
     # expecting prediction in form: [[0,0,1,0],[0,1,0,0], ... ] where each quadruplet is the color of the respective onset
     assert(len(prediction[0]) == 4)
+    import config
     hits = []
     for i in range(len(onsets)):
         hitSound = -1
-        if prediction[i][0] == 1:    # don
+        if i >= config.colorOnsetMax or prediction[i][0] == 1:    # don
             hitSound = 0
         elif prediction[i][1] == 1:  # kat
             hitSound = 8
@@ -88,5 +91,8 @@ SliderTickRate:1
         hits.append(f"288,160,{onsets[i]},1,{hitSound},0:0:0:0:\n")
     out = out + ''.join(hits)
     print(f"{len(prediction)} colors created for {name}")
+    d = len(onsets) - config.colorOnsetMax
+    if d > 0:
+        print(f"The last {d} onsets were not colored, because they were beyond the color onset max, set in config.py.")
 
     return out
