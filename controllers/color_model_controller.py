@@ -409,21 +409,23 @@ def createColorModel():
 
 
 
-createColorModel()
+# createColorModel()
 
 # print("Training finished...")
 
-# model = tf.keras.models.load_model("models/color")
+##################
 
-# audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
-# mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
-# name = "Urushi"  # TODO need to update this if used for more than one song
-# starRatings = [5.0]
-# assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
+model = tf.keras.models.load_model("models/color")
 
-# prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings)
+audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
+mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
+name = "Urushi"  # TODO need to update this if used for more than one song
+starRatings = [5.0]
+assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
 
+prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings)
 
+##################
 
 
 # print(prediction)

@@ -184,18 +184,23 @@ def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsd
 
     totals = [0,0,0,0]
     
-    for i in range(len(xMaps)):
+    for i in range(len(xMaps)):  # TODO append map and sound data at top of loop, then update color once predicted
         # print(f"i: {i} - Shape of leadingSequenceMap: ")
         # print(leadingSequenceMap.shape)
 
-        xMap = leadingSequenceMap[-unrollings:]  # x gets last 64 onsets
-        xAudio = leadingSequenceAudio[-unrollings:]  # x gets last 64 onsets
+        leadingSequenceMap = np.append(leadingSequenceMap, reshape(originalMap[i], (1, 8)), axis=0)
+        leadingSequenceAudio = np.append(leadingSequenceAudio, reshape(originalAudio[i], (1, 1+2*config.colorAudioBookendLength, 40)), axis=0)
+
+        xMap = leadingSequenceMap[-(unrollings+1):]  # x gets last 64 onsets
+        xAudio = leadingSequenceAudio[-(unrollings+1):]  # x gets last 64 onsets
+
+        # xMap[-1]
 
         # print(f"i: {i} - Shape of xMap: ")
         # print(xMap.shape)
 
-        xMap = reshape(xMap, (1, unrollings, 8))  # model expects input in batch form, shapes get wonky if no extra first dimension
-        xAudio = reshape(xAudio, (1, unrollings, 1+2*config.colorAudioBookendLength, 40))
+        xMap = reshape(xMap, (1, unrollings+1, 8))  # model expects input in batch form, shapes get wonky if no extra first dimension
+        xAudio = reshape(xAudio, (1, unrollings+1, 1+2*config.colorAudioBookendLength, 40))
 
         # print("Shape of xMap: ")
         # print(xMap.shape)
@@ -212,13 +217,15 @@ def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsd
         totals = [a + b for a, b in zip(totals, colorPrediction)]
 
         newOnsetMap = np.append(colorPrediction, [originalMap[i][4], originalMap[i][5], originalMap[i][6], originalMap[i][7]])
-        newOnsetAudio = originalAudio[i]
+        # newOnsetAudio = originalAudio[i]
 
         newOnsetMap = reshape(newOnsetMap, (1, 8))
-        newOnsetAudio = reshape(newOnsetAudio, (1, 1+2*config.colorAudioBookendLength, 40))
+        leadingSequenceMap[-1] = newOnsetMap  # update onset with predicted color
 
-        leadingSequenceMap = np.append(leadingSequenceMap, newOnsetMap, axis=0)
-        leadingSequenceAudio = np.append(leadingSequenceAudio, newOnsetAudio, axis=0)
+        # newOnsetAudio = reshape(newOnsetAudio, (1, 1+2*config.colorAudioBookendLength, 40))
+
+        # leadingSequenceMap = np.append(leadingSequenceMap, newOnsetMap, axis=0)
+        # leadingSequenceAudio = np.append(leadingSequenceAudio, newOnsetAudio, axis=0)
 
         if i > 0 and i % 250 == 0:
             print(f"Predicted {i} colors so far...")
