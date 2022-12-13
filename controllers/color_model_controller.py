@@ -356,7 +356,7 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, hesitancy):  # mapInfo has tup
     return pMapFeats, pSongFeats, pNotes  # previously pMapFeats, pSongFeats, starRatings
 
 def initializer():
-    return tf.keras.initializers.RandomNormal(mean=0., stddev=1.)
+    return tf.keras.initializers.RandomNormal(mean=0., stddev=0.05)
 
 def createColorModel():
 
@@ -421,7 +421,8 @@ def createColorModel():
     color_model.compile(  #ga for gradient accumulation
         loss = 'categorical_crossentropy',  # TODO may be source of overfitting if new model won't improve beyond 0.48 accuracy
         # metrics = ['accuracy'],
-        optimizer = tf.keras.optimizers.SGD(momentum=0.9, nesterov=True, learning_rate=learning_rate), #TODO consider others?  # optimizer=keras.optimizers.Adam(1e-3),
+        # optimizer = tf.keras.optimizers.SGD(momentum=0.9, nesterov=True, learning_rate=learning_rate), #TODO consider others?  # optimizer=keras.optimizers.Adam(1e-3),
+        optimizer = tf.keras.optimizers.Adam(1e-3),
         metrics=["accuracy"])
 
     checkpoint_filepath = 'models/checkpointColor'
