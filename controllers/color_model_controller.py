@@ -258,7 +258,7 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, hesitancy):  # mapInfo has tup
     # Stateless LSTM so should be fine to just mash all the unrollings together
 
 
-    mapPad = np.array([0,0,0,0,0,0,0,0])
+    mapPad = np.array([-1,-1,-1,-1,-1,-1,-1,-1])
     audioPad = np.full((1+2*config.colorAudioBookendLength, 40), config.pad)
     colorIndex = -1  # hack for hesitancy
     pNotesIndex = 0
@@ -281,10 +281,10 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, hesitancy):  # mapInfo has tup
                 # continue
 
             color = int(color)
-            don = 0
-            kat = 0
-            fdon = 0
-            fkat = 0
+            don = -1
+            kat = -1
+            fdon = -1
+            fkat = -1
             if color == 0:
                 don = 1
             elif color == 2 or color == 8 or color == 10:
@@ -298,17 +298,17 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, hesitancy):  # mapInfo has tup
                 assert(None)
             assert(don or kat or fdon or fkat)
 
-            isFirstOnset = 0
+            isFirstOnset = -1
             if j == 0:
                 isFirstOnset = 1
 
 
             if j == 0:
-                timeFromPrev = 0
+                timeFromPrev = -1
                 timeToNext = onsets[j+1] - onsets[j]
             elif j == len(onsets) - 1:
                 timeFromPrev = onsets[j] - onsets[j-1]
-                timeToNext = 0
+                timeToNext = -1
             else:
                 timeFromPrev = onsets[j] - onsets[j-1]
                 timeToNext = onsets[j+1] - onsets[j]
@@ -316,7 +316,11 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, hesitancy):  # mapInfo has tup
             rolledMapData.append(np.array([don, kat, fdon, fkat, timeFromPrev / deltaTimeNormalizer, timeToNext / deltaTimeNormalizer, isFirstOnset, sr]))
             
             if hesitant[colorIndex] == 0:  # if we are taking this color
-                pNotes[pNotesIndex] = np.array([don, kat, fdon, fkat])
+                c = [don, kat, fdon, fkat]
+                for i in range(4):
+                    if c[i] == -1:
+                        c[i] = 0
+                pNotes[pNotesIndex] = np.array(c)
                 pNotesIndex += 1
 
 
@@ -335,7 +339,7 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, hesitancy):  # mapInfo has tup
                 elif indexToGet == unrollings:  # this is the onset we would like to predict a color for
                     mapData = rolledMapData[indexToGet]
                     assert(len(mapData) == 8)
-                    uncoloredMapData = np.append([0,0,0,0], mapData[4:])  # combine colorless with last 4 elements of genuine map data
+                    uncoloredMapData = np.append([-1,-1,-1,-1], mapData[4:])  # combine colorless with last 4 elements of genuine map data
                     mapUnrollingsSet[k] = uncoloredMapData
                     songUnrollingsSet[k] = song[1][indexToGet]
                 else:
@@ -351,18 +355,21 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, hesitancy):  # mapInfo has tup
 
     return pMapFeats, pSongFeats, pNotes  # previously pMapFeats, pSongFeats, starRatings
 
+def initializer():
+    return tf.keras.initializers.RandomNormal(mean=0., stddev=1.)
+
 def createColorModel():
 
     ######################################################################################################
     #
     #
-    dataProportion = 0.01  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
-    epochs = 5
-    hesitancy = 0.01  # probabaility each onset will be considered. The idea is to take only a few onsets from each map, to prevent overfitting. 1000 onsets * 0.01 ==> ~10 onsets
-                      # in all cases, at least one onset is taken from each map considered
+    dataProportion = 0.02  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
+    epochs = 50
+    hesitancy = 0.005  # probabaility each onset will be considered. The idea is to take only a few onsets from each map, to prevent overfitting. 1000 onsets in a map * 0.01 ==> ~10 onsets
+                      # in all cases, at least one onset is taken from each map considered (for stability)
 
     batch_size = 1  # as it stands, color model updates after every map (which consists of many onsets, granted. But they are all from same song.)
-    learning_rate = 0.0001  # was 0.01 originally
+    learning_rate = 0.00001  # was 0.01 originally. 0.00001 also an option.
     hidden_units_lstm = 128 #128
 
     generator_batch_size = 1  # TODO pick near as large as possible for speed? This results in trying to allocate the tensor in memory for some reason. 3 is OOM for onset.
@@ -386,26 +393,27 @@ def createColorModel():
     
 
     # base_maps = tf.keras.layers.Lambda(context)(input)
-    base_maps = TimeDistributed(Conv2D(10, (3,3),activation='relu', padding='same',data_format='channels_last'))(audioInput)  # TODO could get these pre-trained via onset model? Maybe not worth it
+    base_maps = TimeDistributed(Conv2D(10, (3,3),activation='relu', padding='same',data_format='channels_last',kernel_initializer=initializer()))(audioInput)  # TODO could get these pre-trained via onset model? Maybe not worth it
     base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps) # TODO is pooling correct with respect to dimensions?
-    base_maps = TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same',data_format='channels_last'))(base_maps)
+    base_maps = TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same',data_format='channels_last',kernel_initializer=initializer()))(base_maps)
     base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
     base_maps = TimeDistributed(Flatten())(base_maps) # see above notes, does this overly flatten temporal?
 
     merged = tf.keras.layers.Concatenate()([mainInput, base_maps])
 
-    base_maps = LSTM(hidden_units_lstm, return_sequences=True)(merged)
+    base_maps = LSTM(hidden_units_lstm, return_sequences=True,kernel_initializer=initializer())(merged)
     base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units_lstm))(base_maps)  
-    base_maps = LSTM(hidden_units_lstm, return_sequences=False)(base_maps)  
+    base_maps = LSTM(hidden_units_lstm, return_sequences=False,kernel_initializer=initializer())(base_maps)  
     base_maps = Dropout(0.5)(base_maps)   # TODO noise shape may be incorrect now *************************************** noise_shape=(None,1,hidden_units_lstm
     # base_maps = Dense(256, activation='relu')(base_maps)
     # base_maps = Dropout(0.5)(base_maps)
     # base_maps = Dense(128, activation='relu')(base_maps)
     # base_maps = Dropout(0.5)(base_maps) 
-    base_maps = Dense(32, activation='relu')(base_maps)
-    base_maps = Dropout(0.5)(base_maps) 
 
-    base_maps = Dense(4, activation='softmax')(base_maps)
+    # base_maps = Dense(32, activation='relu',kernel_initializer=initializer())(base_maps)
+    # base_maps = Dropout(0.5)(base_maps) 
+
+    base_maps = Dense(4, activation='softmax',kernel_initializer=initializer())(base_maps)
 
     color_model = keras.Model(inputs=[mainInput, audioInput], outputs=[base_maps])
 

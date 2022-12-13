@@ -2,9 +2,9 @@
 import numpy as np
 
 audioLengthMaxSeconds = 240
-colorUnrollings = 64
+colorUnrollings = 32#64
 colorOnsetMax = 1000  # onsets after this index in each map will be excluded
-colorAudioBookendLength = 3  # length of prepend and append bookends for audio analysis in color model
+colorAudioBookendLength = 7  # length of prepend and append bookends for audio analysis in color model. This was 7 in the onset model.
 featureMainDirectory = "data/stored_feats"
 datasetMainDirectory = "C:/Users/Admin/osu!/Songs disabled"
 # datasetMainDirectory = "C:/Users/Admin/Documents/adhoc_thing"  # WARNING this will screw up normalization and bandMeans/bandStdevs. Only for debugging
