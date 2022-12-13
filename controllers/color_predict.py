@@ -154,6 +154,8 @@ def batchGetMapInfo(batch_maps):
 mapPad = np.array([-1,-1,-1,-1,-1,-1,-1,-1])
 audioPad = np.full((1+2*config.colorAudioBookendLength, 40), config.pad)
 
+
+
 def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsdatascience.com/time-series-forecasting-with-recurrent-neural-networks-74674e289816
     #prediction_list = xMaps #close_data[-unrollings:]
     # TODO construct unrollings here per-onset
@@ -182,7 +184,8 @@ def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsd
 
     colorPredictions = []
 
-    totals = [0,0,0,0]
+    totals = [0,0,0,0]  # totals of colors predicted
+    totalsRaw = [0.0,0.0,0.0,0.0]  # totals of raw prediction probabilities
     
     for i in range(len(xMaps)):  # TODO append map and sound data at top of loop, then update color once predicted
         # print(f"i: {i} - Shape of leadingSequenceMap: ")
@@ -221,6 +224,7 @@ def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsd
         colorPrediction = solidifyColorPrediction(out[0])  # extra dimension in output, again because things are in batch form
         colorPredictions.append(colorPrediction)
         totals = [a + b for a, b in zip(totals, colorPrediction)]
+        totalsRaw = [a + b for a, b in zip(totalsRaw, out[0])]
 
         newOnsetMap = np.append(colorPrediction, [originalMap[i][4], originalMap[i][5], originalMap[i][6], originalMap[i][7]])
         # newOnsetAudio = originalAudio[i]
@@ -239,7 +243,7 @@ def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsd
             print(f"Predicted {i} colors so far...")
 
     assert(len(colorPredictions) == len(xMaps))
-    return colorPredictions, totals
+    return colorPredictions, totals, totalsRaw
 
 
 def solidifyColorPrediction(out):
@@ -250,10 +254,24 @@ def solidifyColorPrediction(out):
     objects = [don,kat,fdon,fkat]
 
     assert(len(out) == 4)
-    colorIndex = np.argmax(out)
+    colorIndex = sample(out)
     color = objects[colorIndex]
     
     return color
+
+
+def sample(preds, temperature=config.temperatureForColorPredictionSampling):  
+    # temp is originally 1.0. Low = predictability, high = stochasticity
+    # temp of 0 is equivalent to basic argmax. infinity is equivalent to uniform sampling.
+    # tempo of 1 is sampling from original probabilities. 
+    # decreasing from 1, Probabilities become shifted toward larger ones and away from smaller ones
+    # increasing from 1, probabilities become more enarly equal
+    preds = np.asarray(preds).astype('float64')
+    preds = np.log(preds) / temperature
+    exp_preds = np.exp(preds)
+    preds = exp_preds / np.sum(exp_preds)
+    probas = np.random.multinomial(1, preds, 1)
+    return np.argmax(probas)
 
 
 def makePredictionFromMapAndAudio(model, mapFiles, audioFiles, SRs): # returns prediction from model. in: model, mapFiles, audioFiles, starRatings
@@ -282,10 +300,11 @@ def makePredictionFromMapAndAudio(model, mapFiles, audioFiles, SRs): # returns p
 
     assert(len(audioFiles) == 1)  # All the onsets are mashed together in one list, would need to separate them by song to support several songs
     for i in range(len(audioFiles)):
-        prediction, totals = predict(unrollings, model, xMaps, xAudios)
+        prediction, totals, totalsRaw = predict(unrollings, model, xMaps, xAudios)
     # prediction = model.predict(my_prediction_batch_generator, batch_size=generator_batch_size, verbose=1)
 
     print(f"Predicted colors totals [don, kat, fdon, fkat]: {totals}")
+    print(f"Raw prediction probability totals [don, kat, fdon, fkat]: {totalsRaw}")
 
     # print(prediction)
     print("Got to end of prediction")
