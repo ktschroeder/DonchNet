@@ -50,6 +50,8 @@ from tensorflow.keras.optimizers import Optimizer
 
 from controllers import color_predict
 
+from controllers import color_generate_taiko_map
+
 import config
 
 from sklearn.utils import shuffle
@@ -476,38 +478,40 @@ def createColorModel():
 
 
 
-createColorModel()
+# createColorModel()
 
 # print("Training finished...")
 
 ##################
 
-# model = tf.keras.models.load_model("models/color")
+model = tf.keras.models.load_model("models/color")
 
-# # audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
-# # mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
+audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
+mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
+starRatings = [5.0] 
 
-# # audioFiles = ["sample_maps/1061593 katagiri - Urushi/audio.mp3"]
-# # mapFiles = ["sample_maps/1061593 katagiri - Urushi/katagiri - Urushi (WTHBRO) [Muzukashii].osu"]
-# # starRatings = [3.75]  # local SR of Urushi muzu
+# audioFiles = ["sample_maps/1061593 katagiri - Urushi/audio.mp3"]
+# mapFiles = ["sample_maps/1061593 katagiri - Urushi/katagiri - Urushi (WTHBRO) [Muzukashii].osu"]
+# starRatings = [3.75]  # local SR of Urushi muzu
 
 # audioFiles = ["sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.mp3"]
 # mapFiles = ["sample_maps/481954 9mm Parabellum Bullet - Inferno/9mm Parabellum Bullet - Inferno (Nofool) [Inner Oni].osu"]
 # starRatings = [5.5]
+temperatures = [1.1, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4]
 
-# # audioFiles = ["sample_maps/1041076 MYUKKE - OCCHOCO-REST-LESS/audio.mp3"]
-# # mapFiles = ["sample_maps/1041076 MYUKKE - OCCHOCO-REST-LESS/MYUKKE. - OCCHOCO-REST-LESS (Jaye) [Oni].osu"]
-# # starRatings = [4.5]
+# audioFiles = ["sample_maps/1041076 MYUKKE - OCCHOCO-REST-LESS/audio.mp3"]
+# mapFiles = ["sample_maps/1041076 MYUKKE - OCCHOCO-REST-LESS/MYUKKE. - OCCHOCO-REST-LESS (Jaye) [Oni].osu"]
+# starRatings = [4.5]
+for temperature in temperatures:
+    name = f"inferno temp{temperature}"  # TODO need to update this if used for more than one song
 
-# name = "bullet"  # TODO need to update this if used for more than one song
+    assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
 
-# assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
+    prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings, temperature)
+    # expecting prediction in form: [[0,0,1,0],[0,1,0,0], ... ] where each quadruplet is the color of the respective onset
 
-# prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings)
-# # expecting prediction in form: [[0,0,1,0],[0,1,0,0], ... ] where each quadruplet is the color of the respective onset
 
-# from controllers import color_generate_taiko_map
-# color_generate_taiko_map.convertColorPredictionToMap(prediction, audioFiles[0], mapFiles[0], name + f" color SR {starRatings[0]}")
+    color_generate_taiko_map.convertColorPredictionToMap(prediction, audioFiles[0], mapFiles[0], name + f" color SR {starRatings[0]}")
 
 ##################
 

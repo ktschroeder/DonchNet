@@ -156,7 +156,7 @@ audioPad = np.full((1+2*config.colorAudioBookendLength, 40), config.pad)
 
 
 
-def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsdatascience.com/time-series-forecasting-with-recurrent-neural-networks-74674e289816
+def predict(unrollings, model, xMaps, xAudios, temperature): # initially via https://towardsdatascience.com/time-series-forecasting-with-recurrent-neural-networks-74674e289816
     #prediction_list = xMaps #close_data[-unrollings:]
     # TODO construct unrollings here per-onset
     # predictedColors = np.empty((len(xMaps), 4))
@@ -221,7 +221,7 @@ def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsd
             out = model.predict([xMap], verbose=0)
 
         # update leading sequences with new onset based on the predicted color combined with original data
-        colorPrediction = solidifyColorPrediction(out[0])  # extra dimension in output, again because things are in batch form
+        colorPrediction = solidifyColorPrediction(out[0], temperature)  # extra dimension in output, again because things are in batch form
         colorPredictions.append(colorPrediction)
         totals = [a + b for a, b in zip(totals, colorPrediction)]
         totalsRaw = [a + b for a, b in zip(totalsRaw, out[0])]
@@ -246,7 +246,7 @@ def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsd
     return colorPredictions, totals, totalsRaw
 
 
-def solidifyColorPrediction(out):
+def solidifyColorPrediction(out, temperature):
     don = [1,0,0,0]
     kat = [0,1,0,0]
     fdon = [0,0,1,0]
@@ -254,13 +254,13 @@ def solidifyColorPrediction(out):
     objects = [don,kat,fdon,fkat]
 
     assert(len(out) == 4)
-    colorIndex = sample(out)
+    colorIndex = sample(out, temperature)
     color = objects[colorIndex]
     
     return color
 
 
-def sample(preds, temperature=config.temperatureForColorPredictionSampling):  
+def sample(preds, temperature):  
     # temp is originally 1.0. Low = predictability, high = stochasticity
     # temp of 0 is equivalent to basic argmax. infinity is equivalent to uniform sampling.
     # tempo of 1 is sampling from original probabilities. 
@@ -274,7 +274,7 @@ def sample(preds, temperature=config.temperatureForColorPredictionSampling):
     return np.argmax(probas)
 
 
-def makePredictionFromMapAndAudio(model, mapFiles, audioFiles, SRs): # returns prediction from model. in: model, mapFiles, audioFiles, starRatings
+def makePredictionFromMapAndAudio(model, mapFiles, audioFiles, SRs, temperature): # returns prediction from model. in: model, mapFiles, audioFiles, starRatings
     
     # get onsets first and related info, including color
     mapInfo = batchGetMapInfo(mapFiles)  # id, onsets, notes for each map. Does not include SR since we will take the user provided SR for prediction
@@ -300,7 +300,7 @@ def makePredictionFromMapAndAudio(model, mapFiles, audioFiles, SRs): # returns p
 
     assert(len(audioFiles) == 1)  # All the onsets are mashed together in one list, would need to separate them by song to support several songs
     for i in range(len(audioFiles)):
-        prediction, totals, totalsRaw = predict(unrollings, model, xMaps, xAudios)
+        prediction, totals, totalsRaw = predict(unrollings, model, xMaps, xAudios, temperature)
     # prediction = model.predict(my_prediction_batch_generator, batch_size=generator_batch_size, verbose=1)
 
     print(f"Predicted colors totals [don, kat, fdon, fkat]: {totals}")

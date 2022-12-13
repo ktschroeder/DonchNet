@@ -9,8 +9,8 @@ featureMainDirectory = "data/stored_feats"
 datasetMainDirectory = "C:/Users/Admin/osu!/Songs disabled"
 # datasetMainDirectory = "C:/Users/Admin/Documents/adhoc_thing"  # WARNING this will screw up normalization and bandMeans/bandStdevs. Only for debugging
 
-includeAudioFeatsInColorModel = 0
-temperatureForColorPredictionSampling = 1.0
+includeAudioFeatsInColorModel = 1
+# temperatureForColorPredictionSampling = 0.4
 
 def determinePad():
     stdevs = np.loadtxt("data/misc/bandStdevs.txt")

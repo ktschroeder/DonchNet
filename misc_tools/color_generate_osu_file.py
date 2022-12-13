@@ -38,12 +38,12 @@ TimelineZoom: 2
 [Metadata]
 Title:{name}
 TitleUnicode:{name}
-Artist:DonNet
-ArtistUnicode:DonNet
-Creator:DonNet
-Version:DonNet
-Source:DonNet
-Tags:DonNet
+Artist:Artist
+ArtistUnicode:Artist
+Creator:Creator
+Version:{name}
+Source:Source
+Tags:DonchNet
 BeatmapID:0
 BeatmapSetID:-1
 
