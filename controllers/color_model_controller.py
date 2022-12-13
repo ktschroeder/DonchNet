@@ -144,10 +144,11 @@ class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgar
             out[i] = bookended
         return out
     
-    def __init__(self, songFilenames, mapFilenames, batch_size) :
+    def __init__(self, songFilenames, mapFilenames, batch_size, hesitancy) :
         self.songFilenames = songFilenames
         self.mapFilenames = mapFilenames
         self.batch_size = batch_size
+        self.hesitancy = hesitancy
     
     def __len__(self) :
         return (np.ceil(len(self.songFilenames) / float(self.batch_size))).astype(np.int)
@@ -175,7 +176,7 @@ class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgar
 
 
         # Untested but perhaps good to go
-        xMaps, xAudios, yNotes = batchPrepareFeatsForModel(mapInfo, songFeats)
+        xMaps, xAudios, yNotes = batchPrepareFeatsForModel(mapInfo, songFeats, self.hesitancy)
 
         xMaps = reshape(xMaps, (len(xMaps), config.colorUnrollings+1, 8)).astype(float32)  # want |onsets|, 80, 4+4, 1. 4+4 is the 4 colors and 4 other map feats.
         xAudios = reshape(xAudios, (len(xMaps), config.colorUnrollings+1, 1+2*config.colorAudioBookendLength, 40, 1)).astype(float32)  # want |onsets|, 80, 15, 40, 1: onsets, unrollings, 1+2bookends, freq bands, 1.
@@ -231,15 +232,27 @@ def batchGetMapFeats(mapFeatPaths):
         mapFeats.append([id, onsets, sr])
     return mapFeats
 
-def batchPrepareFeatsForModel(mapInfo, songFeats):  # mapInfo has tuples of id, onsets, notes, sr for each map. songFeats has 15x40 per onset. Need to make unrollings.
+def batchPrepareFeatsForModel(mapInfo, songFeats, hesitancy):  # mapInfo has tuples of id, onsets, notes, sr for each map. songFeats has 15x40 per onset. Need to make unrollings.
 
     onsetCount = 0
     for map in mapInfo:
         onsetCount += len(map[1])
 
-    pMapFeats = np.empty((onsetCount, unrollings+1, 8), dtype=float32)  # Everything here should be filled TODO check
-    pSongFeats = np.full((onsetCount, unrollings+1, 1+2*config.colorAudioBookendLength, 40), config.pad)
-    pNotes = np.empty((onsetCount, 4), dtype=float32)
+    hesitant = np.empty((onsetCount))
+    goAheads = 0
+    for i in range(len(hesitant)):
+        h = 1
+        if random.random() > hesitancy:  # if random float from 0 to 1 is over hesitancy then we include the associated onset, else skip
+            h = 0
+            goAheads += 1
+        hesitant[i] = h
+    if goAheads == 0:  # for stability we force at least 1 onset to be considered
+        hesitant[random.randrange(onsetCount)] = 0
+        goAheads = 1
+
+    pMapFeats = np.empty((goAheads, unrollings+1, 8), dtype=float32)  # Everything here should be filled TODO check
+    pSongFeats = np.full((goAheads, unrollings+1, 1+2*config.colorAudioBookendLength, 40), config.pad)
+    pNotes = np.empty((goAheads, 4), dtype=float32)
     
     onsetIndex = 0  
     # Stateless LSTM so should be fine to just mash all the unrollings together
@@ -247,6 +260,8 @@ def batchPrepareFeatsForModel(mapInfo, songFeats):  # mapInfo has tuples of id, 
 
     mapPad = np.array([0,0,0,0,0,0,0,0])
     audioPad = np.full((1+2*config.colorAudioBookendLength, 40), config.pad)
+    colorIndex = -1  # hack for hesitancy
+    pNotesIndex = 0
     for i, map in enumerate(mapInfo):
         song = songFeats[i]
         sr = map[3]
@@ -258,7 +273,13 @@ def batchPrepareFeatsForModel(mapInfo, songFeats):  # mapInfo has tuples of id, 
         # kat: 2/8/10
         # fdon: 4
         # fkat: 6/12/14
+        # onsetIndexHesitancyHack = -1
         for j, color in enumerate(map[2]):
+            colorIndex += 1
+            # onsetIndexHesitancyHack += 1
+            # if hesitant[onsetIndex + onsetIndexHesitancyHack] == 1:
+                # continue
+
             color = int(color)
             don = 0
             kat = 0
@@ -293,11 +314,17 @@ def batchPrepareFeatsForModel(mapInfo, songFeats):  # mapInfo has tuples of id, 
                 timeToNext = onsets[j+1] - onsets[j]
 
             rolledMapData.append(np.array([don, kat, fdon, fkat, timeFromPrev / deltaTimeNormalizer, timeToNext / deltaTimeNormalizer, isFirstOnset, sr]))
-            pNotes[j] = np.array([don, kat, fdon, fkat])
+            
+            if hesitant[colorIndex] == 0:  # if we are taking this color
+                pNotes[pNotesIndex] = np.array([don, kat, fdon, fkat])
+                pNotesIndex += 1
 
 
         # Now make unrollings from rolledMapData...
         for j, item in enumerate(rolledMapData):
+            if hesitant[j] == 1:
+                continue
+
             mapUnrollingsSet = np.empty((unrollings+1, 8), dtype=float32)
             songUnrollingsSet = np.empty((unrollings+1, 1+2*config.colorAudioBookendLength, 40), dtype=float32)
             for k in range(unrollings+1):  # 0 to 79
@@ -320,7 +347,7 @@ def batchPrepareFeatsForModel(mapInfo, songFeats):  # mapInfo has tuples of id, 
             pSongFeats[onsetIndex] = songUnrollingsSet
             onsetIndex += 1
 
-    assert(onsetIndex == onsetCount)      
+    assert(onsetIndex == goAheads)      
 
     return pMapFeats, pSongFeats, pNotes  # previously pMapFeats, pSongFeats, starRatings
 
@@ -331,6 +358,8 @@ def createColorModel():
     #
     dataProportion = 0.01  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
     epochs = 5
+    hesitancy = 0.01  # probabaility each onset will be considered. The idea is to take only a few onsets from each map, to prevent overfitting. 1000 onsets * 0.01 ==> ~10 onsets
+                      # in all cases, at least one onset is taken from each map considered
 
     batch_size = 1  # as it stands, color model updates after every map (which consists of many onsets, granted. But they are all from same song.)
     learning_rate = 0.0001  # was 0.01 originally
@@ -346,8 +375,8 @@ def createColorModel():
     print(f"Color training will use {len(X_train_filenames)} maps and validation will use {len(X_val_filenames)} maps, via dataProportion {dataProportion}.")
     
     
-    my_training_batch_generator = My_Custom_Generator(X_train_filenames, y_train_filenames, generator_batch_size)
-    my_validation_batch_generator = My_Custom_Generator(X_val_filenames, y_val_filenames, generator_batch_size)
+    my_training_batch_generator = My_Custom_Generator(X_train_filenames, y_train_filenames, generator_batch_size, hesitancy)
+    my_validation_batch_generator = My_Custom_Generator(X_val_filenames, y_val_filenames, generator_batch_size, hesitancy)  # inappropriate to use randomness in validation?
 
 
     clear_session()
@@ -409,21 +438,21 @@ def createColorModel():
 
 
 
-# createColorModel()
+createColorModel()
 
 # print("Training finished...")
 
 ##################
 
-model = tf.keras.models.load_model("models/color")
+# model = tf.keras.models.load_model("models/color")
 
-audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
-mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
-name = "Urushi"  # TODO need to update this if used for more than one song
-starRatings = [5.0]
-assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
+# audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
+# mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
+# name = "Urushi"  # TODO need to update this if used for more than one song
+# starRatings = [5.0]
+# assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
 
-prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings)
+# prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings)
 
 ##################
 
