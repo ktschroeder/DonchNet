@@ -56,7 +56,7 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, SRs):  # mapInfo has tuples of
     
     onsetIndex = 0
 
-    mapPad = np.array([0,0,0,0,0,0,0,0])
+    mapPad = np.array([-1,-1,-1,-1,-1,-1,-1,-1])
     audioPad = np.full((1+2*config.colorAudioBookendLength, 40), config.pad)
     for i, map in enumerate(mapInfo):
         song = songFeats[i]
@@ -71,21 +71,21 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, SRs):  # mapInfo has tuples of
         # fkat: 6/12/14
         for j, color in enumerate(map[2]):
 
-            isFirstOnset = 0
+            isFirstOnset = -1
             if j == 0:
                 isFirstOnset = 1
 
             if j == 0:
-                timeFromPrev = 0
+                timeFromPrev = -1
                 timeToNext = onsets[j+1] - onsets[j]
             elif j == len(onsets) - 1:
                 timeFromPrev = onsets[j] - onsets[j-1]
-                timeToNext = 0
+                timeToNext = -1
             else:
                 timeFromPrev = onsets[j] - onsets[j-1]
                 timeToNext = onsets[j+1] - onsets[j]
 
-            rolledMapData.append(np.array([0, 0, 0, 0, timeFromPrev / deltaTimeNormalizer, timeToNext / deltaTimeNormalizer, isFirstOnset, sr]))  # since we are predicting, all colors start 0
+            rolledMapData.append(np.array([-1, -1, -1, -1, timeFromPrev / deltaTimeNormalizer, timeToNext / deltaTimeNormalizer, isFirstOnset, sr]))  # since we are predicting, all colors start 0
 
         # # Now make unrollings from rolledMapData...
         # for j, item in enumerate(rolledMapData):
@@ -151,7 +151,7 @@ def batchGetMapInfo(batch_maps):
         mapFeats.append([id, onsets, notes])
     return mapFeats
 
-mapPad = np.array([0,0,0,0,0,0,0,0])
+mapPad = np.array([-1,-1,-1,-1,-1,-1,-1,-1])
 audioPad = np.full((1+2*config.colorAudioBookendLength, 40), config.pad)
 
 def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsdatascience.com/time-series-forecasting-with-recurrent-neural-networks-74674e289816
