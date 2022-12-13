@@ -15,7 +15,7 @@ import feature_extraction.map_json_to_feats as jtf
 
 max_sequence_length = config.audioLengthMaxSeconds * 100  # 100 frames per second, or 10 ms per frame
 deltaTimeNormalizer = 200  # number that timeFromPrev and timeToNext are divided by to make them more suitable for learning. Arbitrary choice: very roughly average distance between 2 onsets
-
+finishers = config.permitFinishers
 
 
 def batchGetSongFeatsFromAudios(songFeatPaths):  # needs to also analyze audio instead of just loading feats data, which hasn't been computed for a new audio
@@ -51,13 +51,13 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, SRs):  # mapInfo has tuples of
     for map in mapInfo:
         onsetCount += len(map[1])
 
-    pMapFeats = np.empty((onsetCount, 8), dtype=float32)  # Everything here should be filled TODO check
+    pMapFeats = np.empty((onsetCount, 6+finishers), dtype=float32)  # Everything here should be filled TODO check
     pSongFeats = np.full((onsetCount, 1+2*config.colorAudioBookendLength, 40), config.pad)
     
     onsetIndex = 0
 
-    mapPad = np.array([-1,-1,-1,-1,-1,-1,-1,-1])
-    audioPad = np.full((1+2*config.colorAudioBookendLength, 40), config.pad)
+    # mapPad = np.array([-1,-1,-1,-1,-1,-1,-1,-1])
+    # audioPad = np.full((1+2*config.colorAudioBookendLength, 40), config.pad)
     for i, map in enumerate(mapInfo):
         song = songFeats[i]
         sr = SRs[i]
@@ -84,8 +84,11 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, SRs):  # mapInfo has tuples of
             else:
                 timeFromPrev = onsets[j] - onsets[j-1]
                 timeToNext = onsets[j+1] - onsets[j]
-
-            rolledMapData.append(np.array([-1, -1, -1, -1, timeFromPrev / deltaTimeNormalizer, timeToNext / deltaTimeNormalizer, isFirstOnset, sr]))  # since we are predicting, all colors start 0
+            if finishers:
+                rolledMapData.append(np.array([-1, -1, -1, -1, timeFromPrev / deltaTimeNormalizer, timeToNext / deltaTimeNormalizer, isFirstOnset, sr]))  # since we are predicting, all colors start 0
+            else:
+                rolledMapData.append(np.array([-1, -1, timeFromPrev / deltaTimeNormalizer, timeToNext / deltaTimeNormalizer, isFirstOnset, sr]))  # since we are predicting, all colors start 0
+            
 
         # # Now make unrollings from rolledMapData...
         # for j, item in enumerate(rolledMapData):
@@ -152,6 +155,8 @@ def batchGetMapInfo(batch_maps):
     return mapFeats
 
 mapPad = np.array([-1,-1,-1,-1,-1,-1,-1,-1])
+if not finishers:
+    mapPad = np.array([-1,-1,-1,-1,-1,-1])
 audioPad = np.full((1+2*config.colorAudioBookendLength, 40), config.pad)
 
 
@@ -174,7 +179,7 @@ def predict(unrollings, model, xMaps, xAudios, temperature): # initially via htt
 
     originalMap = xMaps
     originalAudio = xAudios
-    leadingSequenceMap = np.full((unrollings, 8), mapPad)
+    leadingSequenceMap = np.full((unrollings, 6+finishers), mapPad)
     leadingSequenceAudio = np.full((unrollings, 1+2*config.colorAudioBookendLength, 40), audioPad)
 
     # print(leadingSequenceMap.dtype.name + leadingSequenceAudio.dtype.name) 
@@ -186,12 +191,15 @@ def predict(unrollings, model, xMaps, xAudios, temperature): # initially via htt
 
     totals = [0,0,0,0]  # totals of colors predicted
     totalsRaw = [0.0,0.0,0.0,0.0]  # totals of raw prediction probabilities
+    if not finishers:
+        totals = [0,0]  # totals of colors predicted
+        totalsRaw = [0.0,0.0]  # totals of raw prediction probabilities
     
     for i in range(len(xMaps)):  # TODO append map and sound data at top of loop, then update color once predicted
         # print(f"i: {i} - Shape of leadingSequenceMap: ")
         # print(leadingSequenceMap.shape)
 
-        leadingSequenceMap = np.append(leadingSequenceMap, reshape(originalMap[i], (1, 8)), axis=0)
+        leadingSequenceMap = np.append(leadingSequenceMap, reshape(originalMap[i], (1, 6+finishers)), axis=0)
         if includeAudioFeats:
             leadingSequenceAudio = np.append(leadingSequenceAudio, reshape(originalAudio[i], (1, 1+2*config.colorAudioBookendLength, 40)), axis=0)
 
@@ -204,7 +212,7 @@ def predict(unrollings, model, xMaps, xAudios, temperature): # initially via htt
         # print(f"i: {i} - Shape of xMap: ")
         # print(xMap.shape)
 
-        xMap = reshape(xMap, (1, unrollings+1, 8))  # model expects input in batch form, shapes get wonky if no extra first dimension
+        xMap = reshape(xMap, (1, unrollings+1, 6+finishers))  # model expects input in batch form, shapes get wonky if no extra first dimension
         if includeAudioFeats:
             xAudio = reshape(xAudio, (1, unrollings+1, 1+2*config.colorAudioBookendLength, 40))
 
@@ -229,7 +237,7 @@ def predict(unrollings, model, xMaps, xAudios, temperature): # initially via htt
         newOnsetMap = np.append(colorPrediction, [originalMap[i][4], originalMap[i][5], originalMap[i][6], originalMap[i][7]])
         # newOnsetAudio = originalAudio[i]
 
-        newOnsetMap = reshape(newOnsetMap, (1, 8))
+        newOnsetMap = reshape(newOnsetMap, (1, 6+finishers))
         leadingSequenceMap[-1] = newOnsetMap  # update onset with predicted color
 
 
@@ -253,7 +261,12 @@ def solidifyColorPrediction(out, temperature):
     fkat = [0,0,0,1]
     objects = [don,kat,fdon,fkat]
 
-    assert(len(out) == 4)
+    if finishers:
+        don = [1,0]
+        kat = [0,1]
+        objects = [don, kat]
+
+    assert(len(out) == 2+finishers)
     colorIndex = sample(out, temperature)
     color = objects[colorIndex]
     
@@ -276,6 +289,8 @@ def sample(preds, temperature):
 
 def makePredictionFromMapAndAudio(model, mapFiles, audioFiles, SRs, temperature): # returns prediction from model. in: model, mapFiles, audioFiles, starRatings
     
+    print(f"Predicting with finishers {finishers}, includeAudio {config.includeAudioFeatsInColorModel}, temperature {temperature}")
+
     # get onsets first and related info, including color
     mapInfo = batchGetMapInfo(mapFiles)  # id, onsets, notes for each map. Does not include SR since we will take the user provided SR for prediction
     unrollings = config.colorUnrollings
@@ -293,7 +308,7 @@ def makePredictionFromMapAndAudio(model, mapFiles, audioFiles, SRs, temperature)
     prediction = None
     colors = None
 
-    xMaps = reshape(xMaps, (len(xMaps), 8)).astype(float32)  # want |onsets|, 80, 4+4, 1. 4+4 is the 4 colors and 4 other map feats.
+    xMaps = reshape(xMaps, (len(xMaps), 6+finishers)).astype(float32)  # want |onsets|, 80, 4+4, 1. 4+4 is the 4 colors and 4 other map feats.
     xAudios = reshape(xAudios, (len(xMaps), 1+2*config.colorAudioBookendLength, 40, 1)).astype(float32)  # want |onsets|, 80, 15, 40, 1: onsets, unrollings, 1+2bookends, freq bands, 1.
           
     print("Beginning prediction...")
@@ -303,8 +318,12 @@ def makePredictionFromMapAndAudio(model, mapFiles, audioFiles, SRs, temperature)
         prediction, totals, totalsRaw = predict(unrollings, model, xMaps, xAudios, temperature)
     # prediction = model.predict(my_prediction_batch_generator, batch_size=generator_batch_size, verbose=1)
 
-    print(f"Predicted colors totals [don, kat, fdon, fkat]: {totals}")
-    print(f"Raw prediction probability totals [don, kat, fdon, fkat]: {totalsRaw}")
+    if finishers:
+        print(f"Predicted colors totals [don, kat, fdon, fkat]: {totals}")
+        print(f"Raw prediction probability totals [don, kat, fdon, fkat]: {totalsRaw}")
+    else:
+        print(f"Predicted colors totals [don, kat]: {totals}")
+        print(f"Raw prediction probability totals [don, kat]: {totalsRaw}")
 
     # print(prediction)
     print("Got to end of prediction")

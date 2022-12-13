@@ -365,13 +365,15 @@ def batchPrepareFeatsForModel(mapInfo, hesitancy, songFeats = None):  # mapInfo 
 
             mapUnrollingsSet = np.empty((unrollings+1, 6+finishers), dtype=float32)
             songUnrollingsSet = np.empty((unrollings+1, 1+2*config.colorAudioBookendLength, 40), dtype=float32)
+            sanityCheck = 0
             for k in range(unrollings+1):  # 0 to 79
-                indexToGet = j - (unrollings+1) + k  # first is 0 - 80 + 0, through 0 - 80 + 79
+                indexToGet = j - (unrollings) + k  # first is 0 - 80 + 0, through 0 - 80 + 79
                 if indexToGet < 0:
+                    assert(sanityCheck == 0)
                     mapUnrollingsSet[k] = mapPad
                     if songFeats:
                         songUnrollingsSet[k] = audioPad
-                elif indexToGet == unrollings:  # this is the onset we would like to predict a color for
+                elif k == unrollings:  # this is the onset we would like to predict a color for
                     mapData = rolledMapData[indexToGet]
                     assert(len(mapData) == 6+finishers)
                     if finishers:
@@ -381,11 +383,14 @@ def batchPrepareFeatsForModel(mapInfo, hesitancy, songFeats = None):  # mapInfo 
                     mapUnrollingsSet[k] = uncoloredMapData
                     if songFeats:
                         songUnrollingsSet[k] = song[1][indexToGet]
+                    sanityCheck += 1
                 else:
+                    assert(sanityCheck == 0)
                     assert(indexToGet < len(rolledMapData))
                     mapUnrollingsSet[k] = rolledMapData[indexToGet]
                     if songFeats:
                         songUnrollingsSet[k] = song[1][indexToGet]
+            assert(sanityCheck == 1)
 
             pMapFeats[onsetIndex] = mapUnrollingsSet
             if songFeats:
@@ -407,9 +412,9 @@ def createColorModel():
     ######################################################################################################
     #
     #
-    dataProportion = 0.05  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
-    epochs = 300
-    hesitancy = 0.01  # probabaility each onset will be considered. The idea is to take only a few onsets from each map, to prevent overfitting. 1000 onsets in a map * 0.005 ==> ~5 onsets
+    dataProportion = 0.005  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
+    epochs = 2
+    hesitancy = 0.005  # probabaility each onset will be considered. The idea is to take only a few onsets from each map, to prevent overfitting. 1000 onsets in a map * 0.005 ==> ~5 onsets
                       # in all cases, at least one onset is taken from each map considered (for stability)
 
     includeAudioFeats = config.includeAudioFeatsInColorModel  # whether to include audio feats in the model
