@@ -363,13 +363,13 @@ def createColorModel():
     ######################################################################################################
     #
     #
-    dataProportion = 0.02  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
+    dataProportion = 0.1  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
     epochs = 50
-    hesitancy = 0.005  # probabaility each onset will be considered. The idea is to take only a few onsets from each map, to prevent overfitting. 1000 onsets in a map * 0.01 ==> ~10 onsets
+    hesitancy = 0.005  # probabaility each onset will be considered. The idea is to take only a few onsets from each map, to prevent overfitting. 1000 onsets in a map * 0.005 ==> ~5 onsets
                       # in all cases, at least one onset is taken from each map considered (for stability)
 
     batch_size = 1  # as it stands, color model updates after every map (which consists of many onsets, granted. But they are all from same song.)
-    learning_rate = 0.00001  # was 0.01 originally. 0.00001 also an option.
+    # learning_rate = 0.00001  # was 0.01 originally. 0.00001 also an option.
     hidden_units_lstm = 128 #128
 
     generator_batch_size = 1  # TODO pick near as large as possible for speed? This results in trying to allocate the tensor in memory for some reason. 3 is OOM for onset.
@@ -447,7 +447,7 @@ def createColorModel():
 
 
 
-# createColorModel()
+createColorModel()
 
 # print("Training finished...")
 
@@ -462,6 +462,9 @@ starRatings = [5.0]
 assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
 
 prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings)
+# expecting prediction in form: [[0,0,1,0],[0,1,0,0], ... ] where each quadruplet is the color of the respective onset
+
+controllers.convertColorPredictionToMap(prediction, audioFiles[0], mapFiles[0], starRatings[0], name + f" color SR {starRatings[0]}")
 
 ##################
 

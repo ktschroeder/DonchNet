@@ -222,6 +222,8 @@ def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsd
         newOnsetMap = reshape(newOnsetMap, (1, 8))
         leadingSequenceMap[-1] = newOnsetMap  # update onset with predicted color
 
+
+
         # newOnsetAudio = reshape(newOnsetAudio, (1, 1+2*config.colorAudioBookendLength, 40))
 
         # leadingSequenceMap = np.append(leadingSequenceMap, newOnsetMap, axis=0)
