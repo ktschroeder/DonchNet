@@ -64,6 +64,7 @@ absl.logging.set_verbosity(absl.logging.ERROR)  # intended to suppress warning a
 mainDir = config.featureMainDirectory
 unrollings = config.colorUnrollings  # 80
 deltaTimeNormalizer = 200  # number that timeFromPrev and timeToNext are divided by to make them more suitable for learning. Arbitrary choice: very roughly average distance between 2 onsets
+finishers = config.permitFinishers
 
 # GENERATOR via https://medium.com/@mrgarg.rajat/training-on-large-datasets-that-dont-fit-in-memory-in-keras-60a974785d71
 def generatorPrep(dataProportion):
@@ -186,10 +187,10 @@ class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgar
         else:
             xMaps, yNotes = batchPrepareFeatsForModel(mapInfo, self.hesitancy)
 
-        xMaps = reshape(xMaps, (len(xMaps), config.colorUnrollings+1, 8)).astype(float32)  # want |onsets|, 80, 4+4, 1. 4+4 is the 4 colors and 4 other map feats.
+        xMaps = reshape(xMaps, (len(xMaps), config.colorUnrollings+1, 6+finishers)).astype(float32)  # want |onsets|, 80, 4+4, 1. 4+4 is the 4 colors and 4 other map feats.
         if self.useAudio:
             xAudios = reshape(xAudios, (len(xMaps), config.colorUnrollings+1, 1+2*config.colorAudioBookendLength, 40, 1)).astype(float32)  # want |onsets|, 80, 15, 40, 1: onsets, unrollings, 1+2bookends, freq bands, 1.
-        yNotes = reshape(yNotes, (len(xMaps), 4)).astype(float32)  # want |onsets|, 4. 4 comes from the one-hot for don, kat, fdon, fkat.
+        yNotes = reshape(yNotes, (len(xMaps), 2+finishers)).astype(float32)  # want |onsets|, 4. 4 comes from the one-hot for don, kat, fdon, fkat.
         
 
         # print("in generator: ", x.shape, y.shape, starRatings.shape)  # currently (17, 24000, 15, 40) (17, 24000) (17,)
@@ -262,15 +263,18 @@ def batchPrepareFeatsForModel(mapInfo, hesitancy, songFeats = None):  # mapInfo 
         hesitant[random.randrange(onsetCount)] = 0
         goAheads = 1
 
-    pMapFeats = np.empty((goAheads, unrollings+1, 8), dtype=float32)  # Everything here should be filled TODO check
+    pMapFeats = np.empty((goAheads, unrollings+1, 6+finishers), dtype=float32)  # Everything here should be filled TODO check
     pSongFeats = np.full((goAheads, unrollings+1, 1+2*config.colorAudioBookendLength, 40), config.pad)
-    pNotes = np.empty((goAheads, 4), dtype=float32)
+    pNotes = np.empty((goAheads, 2+finishers), dtype=float32)
     
     onsetIndex = 0  
     # Stateless LSTM so should be fine to just mash all the unrollings together
 
-
-    mapPad = np.array([-1,-1,-1,-1,-1,-1,-1,-1])
+    if finishers:
+        mapPad = np.array([-1,-1,-1,-1,-1,-1,-1,-1])
+    else:
+        mapPad = np.array([-1,-1,-1,-1,-1,-1])
+    
     audioPad = np.full((1+2*config.colorAudioBookendLength, 40), config.pad)
     colorIndex = -1  # hack for hesitancy
     pNotesIndex = 0
@@ -304,12 +308,20 @@ def batchPrepareFeatsForModel(mapInfo, hesitancy, songFeats = None):  # mapInfo 
                 kat = 1
             elif color == 4:
                 fdon = 1
+                if not finishers:
+                    fdon = 0
+                    don = 1
             elif color == 6 or color == 12 or color == 14:
                 fkat = 1
+                if not finishers:
+                    fkat = 0
+                    kat = 1
             else:
                 print(f"Found unexpected color (hitsound) {color} in map {map[0]}.")
                 assert(None)
             assert(don or kat or fdon or fkat)
+
+                
 
             isFirstOnset = -1
             if j == 0:
@@ -326,13 +338,22 @@ def batchPrepareFeatsForModel(mapInfo, hesitancy, songFeats = None):  # mapInfo 
                 timeFromPrev = onsets[j] - onsets[j-1]
                 timeToNext = onsets[j+1] - onsets[j]
 
-            rolledMapData.append(np.array([don, kat, fdon, fkat, timeFromPrev / deltaTimeNormalizer, timeToNext / deltaTimeNormalizer, isFirstOnset, sr]))
+            if finishers:
+                rolledMapData.append(np.array([don, kat, fdon, fkat, timeFromPrev / deltaTimeNormalizer, timeToNext / deltaTimeNormalizer, isFirstOnset, sr]))
+            else:
+                rolledMapData.append(np.array([don, kat, timeFromPrev / deltaTimeNormalizer, timeToNext / deltaTimeNormalizer, isFirstOnset, sr]))
             
             if hesitant[colorIndex] == 0:  # if we are taking this color
-                c = [don, kat, fdon, fkat]
-                for i in range(4):
-                    if c[i] == -1:
-                        c[i] = 0
+                if finishers:
+                    c = [don, kat, fdon, fkat]
+                    for i in range(4):  # this is for Y data
+                        if c[i] == -1:
+                            c[i] = 0
+                else:
+                    c = [don, kat]
+                    for i in range(2):  # this is for Y data
+                        if c[i] == -1:
+                            c[i] = 0
                 pNotes[pNotesIndex] = np.array(c)
                 pNotesIndex += 1
 
@@ -342,7 +363,7 @@ def batchPrepareFeatsForModel(mapInfo, hesitancy, songFeats = None):  # mapInfo 
             if hesitant[j] == 1:
                 continue
 
-            mapUnrollingsSet = np.empty((unrollings+1, 8), dtype=float32)
+            mapUnrollingsSet = np.empty((unrollings+1, 6+finishers), dtype=float32)
             songUnrollingsSet = np.empty((unrollings+1, 1+2*config.colorAudioBookendLength, 40), dtype=float32)
             for k in range(unrollings+1):  # 0 to 79
                 indexToGet = j - (unrollings+1) + k  # first is 0 - 80 + 0, through 0 - 80 + 79
@@ -352,8 +373,11 @@ def batchPrepareFeatsForModel(mapInfo, hesitancy, songFeats = None):  # mapInfo 
                         songUnrollingsSet[k] = audioPad
                 elif indexToGet == unrollings:  # this is the onset we would like to predict a color for
                     mapData = rolledMapData[indexToGet]
-                    assert(len(mapData) == 8)
-                    uncoloredMapData = np.append([-1,-1,-1,-1], mapData[4:])  # combine colorless with last 4 elements of genuine map data
+                    assert(len(mapData) == 6+finishers)
+                    if finishers:
+                        uncoloredMapData = np.append([-1,-1,-1,-1], mapData[4:])  # combine colorless with last 4 elements of genuine map data
+                    else:
+                        uncoloredMapData = np.append([-1,-1], mapData[2:])  # combine colorless with last 4 elements of genuine map data
                     mapUnrollingsSet[k] = uncoloredMapData
                     if songFeats:
                         songUnrollingsSet[k] = song[1][indexToGet]
@@ -383,7 +407,7 @@ def createColorModel():
     ######################################################################################################
     #
     #
-    dataProportion = 0.1  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
+    dataProportion = 0.05  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
     epochs = 300
     hesitancy = 0.01  # probabaility each onset will be considered. The idea is to take only a few onsets from each map, to prevent overfitting. 1000 onsets in a map * 0.005 ==> ~5 onsets
                       # in all cases, at least one onset is taken from each map considered (for stability)
@@ -412,7 +436,7 @@ def createColorModel():
 
     clear_session()
 
-    mainInput = tf.keras.Input(shape=(unrollings+1,8))  # 8: don, fdon, kat, fkat, timeFromPrev, timeToNext, isFirst, SR (TODO divide SR by 10 to normalize some)
+    mainInput = tf.keras.Input(shape=(unrollings+1,6+finishers))  # 8: don, fdon, kat, fkat, timeFromPrev, timeToNext, isFirst, SR (TODO divide SR by 10 to normalize some)
     
     
     if includeAudioFeats:
@@ -441,7 +465,7 @@ def createColorModel():
     # base_maps = Dense(32, activation='relu',kernel_initializer=initializer())(base_maps)
     # base_maps = Dropout(0.5)(base_maps) 
 
-    base_maps = Dense(4, activation='softmax',kernel_initializer=initializer())(base_maps)
+    base_maps = Dense(2+finishers, activation='softmax',kernel_initializer=initializer())(base_maps)
 
     if includeAudioFeats:
         color_model = keras.Model(inputs=[mainInput, audioInput], outputs=[base_maps])
@@ -478,40 +502,40 @@ def createColorModel():
 
 
 
-# createColorModel()
+createColorModel()
 
 # print("Training finished...")
 
 ##################
 
-model = tf.keras.models.load_model("models/color")
+# model = tf.keras.models.load_model("models/color")
 
-audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
-mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
-starRatings = [5.0] 
+# audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
+# mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
+# starRatings = [5.0] 
 
-# audioFiles = ["sample_maps/1061593 katagiri - Urushi/audio.mp3"]
-# mapFiles = ["sample_maps/1061593 katagiri - Urushi/katagiri - Urushi (WTHBRO) [Muzukashii].osu"]
-# starRatings = [3.75]  # local SR of Urushi muzu
+# # audioFiles = ["sample_maps/1061593 katagiri - Urushi/audio.mp3"]
+# # mapFiles = ["sample_maps/1061593 katagiri - Urushi/katagiri - Urushi (WTHBRO) [Muzukashii].osu"]
+# # starRatings = [3.75]  # local SR of Urushi muzu
 
-# audioFiles = ["sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.mp3"]
-# mapFiles = ["sample_maps/481954 9mm Parabellum Bullet - Inferno/9mm Parabellum Bullet - Inferno (Nofool) [Inner Oni].osu"]
-# starRatings = [5.5]
-temperatures = [1.1, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4]
+# # audioFiles = ["sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.mp3"]
+# # mapFiles = ["sample_maps/481954 9mm Parabellum Bullet - Inferno/9mm Parabellum Bullet - Inferno (Nofool) [Inner Oni].osu"]
+# # starRatings = [5.5]
+# temperatures = [1.1, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4]
 
-# audioFiles = ["sample_maps/1041076 MYUKKE - OCCHOCO-REST-LESS/audio.mp3"]
-# mapFiles = ["sample_maps/1041076 MYUKKE - OCCHOCO-REST-LESS/MYUKKE. - OCCHOCO-REST-LESS (Jaye) [Oni].osu"]
-# starRatings = [4.5]
-for temperature in temperatures:
-    name = f"inferno temp{temperature}"  # TODO need to update this if used for more than one song
+# # audioFiles = ["sample_maps/1041076 MYUKKE - OCCHOCO-REST-LESS/audio.mp3"]
+# # mapFiles = ["sample_maps/1041076 MYUKKE - OCCHOCO-REST-LESS/MYUKKE. - OCCHOCO-REST-LESS (Jaye) [Oni].osu"]
+# # starRatings = [4.5]
+# for temperature in temperatures:
+#     name = f"inferno temp{temperature}"  # TODO need to update this if used for more than one song
 
-    assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
+#     assert(len(audioFiles) == len(starRatings) and len(audioFiles) == len(mapFiles))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
 
-    prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings, temperature)
-    # expecting prediction in form: [[0,0,1,0],[0,1,0,0], ... ] where each quadruplet is the color of the respective onset
+#     prediction = controllers.color_predict.makePredictionFromMapAndAudio(model, mapFiles, audioFiles, starRatings, temperature)
+#     # expecting prediction in form: [[0,0,1,0],[0,1,0,0], ... ] where each quadruplet is the color of the respective onset
 
 
-    color_generate_taiko_map.convertColorPredictionToMap(prediction, audioFiles[0], mapFiles[0], name + f" color SR {starRatings[0]}")
+#     color_generate_taiko_map.convertColorPredictionToMap(prediction, audioFiles[0], mapFiles[0], name + f" color SR {starRatings[0]}")
 
 ##################
 
