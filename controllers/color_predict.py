@@ -116,7 +116,7 @@ def batchPrepareFeatsForModel(mapInfo, songFeats, SRs):  # mapInfo has tuples of
 
 
 
-def addContextAndTrim(self, x, onsets, bookendLength):
+def addContextAndTrim(x, onsets, bookendLength):
 # x.reshape(())   (config.audioLengthMaxSeconds, 40)?
     padding = np.full((1,40), config.pad, dtype=float32)  # TODO after normalization, this should be like -3 instead of -500. track minimum to determine this
     context = bookendLength
@@ -124,6 +124,7 @@ def addContextAndTrim(self, x, onsets, bookendLength):
     # want to create input_shape=(max_sequence_length,15,40) from (max_sequence_length, 40)
     out = np.zeros((len(onsets),window,40))
     onsets = np.array(onsets).astype(int)
+    # onsets = onsets.astype(int)
     # #
     truths = onsets // 10
 
@@ -138,11 +139,12 @@ def addContextAndTrim(self, x, onsets, bookendLength):
         out[i] = bookended
     return out
 
-
+from dataset_tools import map_to_json_converter
 def batchGetMapInfo(batch_maps):
     mapFeats = []
     for item in batch_maps:
-        id, onsets, notes = jtf.jsonToFeatsColor(item)
+        json = map_to_json_converter.mapToJson(item)
+        id, onsets, notes, _ = jtf.jsonToFeatsColor(json)  # also passes back SR but we ignore that SR here
         cap = min(len(onsets), config.colorOnsetMax)  # TODO limiting, can remove maybe for prediction
         onsets = onsets[:cap]
         notes = notes[:cap]
@@ -164,7 +166,7 @@ def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsd
     #     out = model.predict() #TODO
 
     #     predictedColors[i] = out
-    #     # I would then need to add this prediction to the next 80 unrollings
+    #     # I would then need to add this prediction to the next 64 unrollings
 
 
 
@@ -173,28 +175,56 @@ def predict(unrollings, model, xMaps, xAudios): # initially via https://towardsd
     leadingSequenceMap = np.full((unrollings, 8), mapPad)
     leadingSequenceAudio = np.full((unrollings, 1+2*config.colorAudioBookendLength, 40), audioPad)
 
+    # print(leadingSequenceMap.dtype.name + leadingSequenceAudio.dtype.name) 
+
+    assert(leadingSequenceMap.dtype.name == "int32")
+    assert(leadingSequenceAudio.dtype.name == "float64")
+
     colorPredictions = []
+
+    totals = [0,0,0,0]
     
     for i in range(len(xMaps)):
-        xMap = leadingSequenceMap[-unrollings:]  # x gets last 80 onsets
-        xAudio = leadingSequenceAudio[-unrollings:]  # x gets last 80 onsets
+        # print(f"i: {i} - Shape of leadingSequenceMap: ")
+        # print(leadingSequenceMap.shape)
+
+        xMap = leadingSequenceMap[-unrollings:]  # x gets last 64 onsets
+        xAudio = leadingSequenceAudio[-unrollings:]  # x gets last 64 onsets
+
+        # print(f"i: {i} - Shape of xMap: ")
+        # print(xMap.shape)
+
+        xMap = reshape(xMap, (1, unrollings, 8))  # model expects input in batch form, shapes get wonky if no extra first dimension
+        xAudio = reshape(xAudio, (1, unrollings, 1+2*config.colorAudioBookendLength, 40))
+
+        # print("Shape of xMap: ")
+        # print(xMap.shape)
+        # print("Shape of xAudio: ")
+        # print(xAudio.shape)
 
         # x = x.reshape((1, unrollings, 1))
 
-        out = model.predict([xMap, xAudio], verbose=1)#[0][0]
+        out = model.predict([xMap, xAudio], verbose=0)#[0][0]  # if verbose, prints for every call to model.predict
 
         # update leading sequences with new onset based on the predicted color combined with original data
-        colorPrediction = solidifyColorPrediction(out)
+        colorPrediction = solidifyColorPrediction(out[0])  # extra dimension in output, again because things are in batch form
         colorPredictions.append(colorPrediction)
+        totals = [a + b for a, b in zip(totals, colorPrediction)]
 
-        newOnsetMap = np.append(colorPrediction, originalMap[i][4], originalMap[i][5], originalMap[i][6], originalMap[i][7])
+        newOnsetMap = np.append(colorPrediction, [originalMap[i][4], originalMap[i][5], originalMap[i][6], originalMap[i][7]])
         newOnsetAudio = originalAudio[i]
 
-        leadingSequenceMap = np.append(leadingSequenceMap, newOnsetMap)
-        leadingSequenceAudio = np.append(leadingSequenceAudio, newOnsetAudio)
+        newOnsetMap = reshape(newOnsetMap, (1, 8))
+        newOnsetAudio = reshape(newOnsetAudio, (1, 1+2*config.colorAudioBookendLength, 40))
+
+        leadingSequenceMap = np.append(leadingSequenceMap, newOnsetMap, axis=0)
+        leadingSequenceAudio = np.append(leadingSequenceAudio, newOnsetAudio, axis=0)
+
+        if i > 0 and i % 250 == 0:
+            print(f"Predicted {i} colors so far...")
 
     assert(len(colorPredictions) == len(xMaps))
-    return colorPredictions
+    return colorPredictions, totals
 
 
 def solidifyColorPrediction(out):
@@ -205,9 +235,10 @@ def solidifyColorPrediction(out):
     objects = [don,kat,fdon,fkat]
 
     assert(len(out) == 4)
-    color = np.argmax(out)
+    colorIndex = np.argmax(out)
+    color = objects[colorIndex]
     
-    return objects[color]
+    return color
 
 
 def makePredictionFromMapAndAudio(model, mapFiles, audioFiles, SRs): # returns prediction from model. in: model, mapFiles, audioFiles, starRatings
@@ -227,16 +258,21 @@ def makePredictionFromMapAndAudio(model, mapFiles, audioFiles, SRs): # returns p
     xMaps, xAudios = batchPrepareFeatsForModel(mapInfo, songFeats, SRs)  # # everything should be same as color training, except all notes are colorless and we provided SR
 
     prediction = None
+    colors = None
 
     xMaps = reshape(xMaps, (len(xMaps), 8)).astype(float32)  # want |onsets|, 80, 4+4, 1. 4+4 is the 4 colors and 4 other map feats.
     xAudios = reshape(xAudios, (len(xMaps), 1+2*config.colorAudioBookendLength, 40, 1)).astype(float32)  # want |onsets|, 80, 15, 40, 1: onsets, unrollings, 1+2bookends, freq bands, 1.
           
+    print("Beginning prediction...")
+
     assert(len(audioFiles) == 1)  # All the onsets are mashed together in one list, would need to separate them by song to support several songs
     for i in range(len(audioFiles)):
-        prediction = predict(unrollings, model, xMaps, xAudios)
+        prediction, totals = predict(unrollings, model, xMaps, xAudios)
     # prediction = model.predict(my_prediction_batch_generator, batch_size=generator_batch_size, verbose=1)
 
-    print(prediction)
+    print(f"Predicted colors totals [don, kat, fdon, fkat]: {totals}")
+
+    # print(prediction)
     print("Got to end of prediction")
 
     with open('models/prediction.pickle', 'wb') as handle:

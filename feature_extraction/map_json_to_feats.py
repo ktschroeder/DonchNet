@@ -21,14 +21,20 @@ def jsonToFeats(file):
     return id, onsets, sr
 
 
-def jsonToFeatsColor(file):
-    data = open(file,'rt').read()
-    print(file)
-    j = json.loads(data)
+def jsonToFeatsColor(fileOrJson):  # can be file name of json or actual json
+    j = None
+    try:
+        j = json.loads(fileOrJson)  # this will throw an exception if it is a file
+    except ValueError as e:
+        data = open(fileOrJson,'rt').read()
+        # print(fileOrJson)
+        j = json.loads(data)
+    assert(j)
+
     onsets = []
     notes = []
     for i in range (len(j["hitobjects"])):
-        onsets.append(j["hitobjects"][i]["time"])  # offset in ms, currently ignoring type of object
+        onsets.append(round(float((j["hitobjects"][i]["time"]))))  # offset in ms, currently ignoring type of object
         notes.append(j["hitobjects"][i]["hitsound"])
     sr = j["sr"]
     
