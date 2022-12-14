@@ -1,13 +1,13 @@
-import random
+import random, os
 
-def generateOsuFile(onsets, name, starRating):
+def generateOsuFile(onsets, name, starRating, audioFile):
     # TODO automatic snapping? There is no well-defined starting offset, also red barlines can change and appear several times normally. Maybe leave this to be done manually
 
     randomID = random.randrange(999999)
     out = f'''osu file format v14
 
 [General]
-AudioFilename: audio.wav
+AudioFilename: {os.path.basename(audioFile)}
 AudioLeadIn: 0
 PreviewTime: -1
 Countdown: 0

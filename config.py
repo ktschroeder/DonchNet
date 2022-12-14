@@ -3,14 +3,14 @@ import numpy as np
 
 audioLengthMaxSeconds = 240
 colorUnrollings = 64#32#64
-colorOnsetMax = 1000  # onsets after this index in each map will be excluded. For training, 2000 is OOM, but fine for prediction. Larger probably ifne too.
+colorOnsetMax = 3000  # onsets after this index in each map will be excluded. For training, 2000 is OOM, but fine for prediction. Larger probably ifne too.
 colorAudioBookendLength = 7  # length of prepend and append bookends for audio analysis in color model. This was 7 in the onset model.
 featureMainDirectory = "data/stored_feats"
 datasetMainDirectory = "C:/Users/Admin/osu!/Songs disabled"
 # datasetMainDirectory = "C:/Users/Admin/Documents/adhoc_thing"  # WARNING this will screw up normalization and bandMeans/bandStdevs. Only for debugging
 
 includeAudioFeatsInColorModel = 1
-permitFinishers = 0  # 0 for don kat only, 2 for don, kat, fdon, fkat
+permitFinishers = 0  # 0 for don kat only, 2 for don, kat, fdon, fkat. Whether finishers will be considered in color model.
 # temperatureForColorPredictionSampling = 0.4
 
 def determinePad():

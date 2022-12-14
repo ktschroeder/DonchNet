@@ -1,6 +1,7 @@
 import random
 from dataset_tools import map_to_json_converter
 from feature_extraction import map_json_to_feats
+import config
 
 def getOnsets(osuFile):
     json = map_to_json_converter.mapToJson(osuFile)
@@ -72,8 +73,8 @@ SliderTickRate:1
 '''
 
     # expecting prediction in form: [[0,0,1,0],[0,1,0,0], ... ] where each quadruplet is the color of the respective onset
-    assert(len(prediction[0]) == 4)
-    import config
+    assert(len(prediction[0]) == 2+config.permitFinishers)
+    
     hits = []
     for i in range(len(onsets)):
         hitSound = -1

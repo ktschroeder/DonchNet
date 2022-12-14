@@ -12,7 +12,7 @@ def convertColorPredictionToMap(prediction, audioFile, mapfile, name):
         os.makedirs("data")
     if not os.path.exists("data/prediction_maps"):
         os.makedirs("data/prediction_maps")
-    name = slugify.slugify(name)
+    name = slugify.slugify(name) + "- map"
     path = f"data/prediction_maps/{name}"
     if not os.path.exists(path):
         os.makedirs(path)

@@ -234,7 +234,11 @@ def predict(unrollings, model, xMaps, xAudios, temperature): # initially via htt
         totals = [a + b for a, b in zip(totals, colorPrediction)]
         totalsRaw = [a + b for a, b in zip(totalsRaw, out[0])]
 
-        newOnsetMap = np.append(colorPrediction, [originalMap[i][4], originalMap[i][5], originalMap[i][6], originalMap[i][7]])
+        if finishers:
+            newOnsetMap = np.append(colorPrediction, [originalMap[i][4], originalMap[i][5], originalMap[i][6], originalMap[i][7]])
+        else:
+            assert(len(colorPrediction) == 2)
+            newOnsetMap = np.append(colorPrediction, [originalMap[i][2], originalMap[i][3], originalMap[i][4], originalMap[i][5]])
         # newOnsetAudio = originalAudio[i]
 
         newOnsetMap = reshape(newOnsetMap, (1, 6+finishers))
@@ -261,7 +265,7 @@ def solidifyColorPrediction(out, temperature):
     fkat = [0,0,0,1]
     objects = [don,kat,fdon,fkat]
 
-    if finishers:
+    if not finishers:
         don = [1,0]
         kat = [0,1]
         objects = [don, kat]

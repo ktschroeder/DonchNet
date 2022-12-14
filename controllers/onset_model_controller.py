@@ -514,11 +514,71 @@ model = tf.keras.models.load_model("models/onset")
 # name = "Hella Deep"
 # audioFiles = ["sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.mp3"]
 # name = "Inferno"
-audioFiles = ["sample_maps/1061593 katagiri - Urushi/audio.mp3"]
-name = "Urushi"  # TODO need to update this if used for more than one song
-starRatings = [5.0]
+# audioFiles = ["sample_maps/1061593 katagiri - Urushi/audio.mp3"]
+# name = "Urushi"  # TODO need to update this if used for more than one song
+# starRatings = [5.0]
+
+# path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
+# audioFiles = [os.path.join(path, "53438 Troupe Record - Babylonia", "DISTORTED NEW AGE.mp3")]
+# name = "babylonia"
+# starRatings = [5.04]
+
+# path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
+# audioFiles = [os.path.join(path, "245517 LeaF - Poison AND_OR Affection", "Poison ANDOR Affection.mp3")]
+# name = "poison"
+# starRatings = [4.68]
+
+# path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
+# audioFiles = [os.path.join(path, "394634 Gojou Mayumi - DANZEN! Futari wa Pretty Cure", "DANZEN.mp3")]
+# name = "danzen"
+# starRatings = [3.51]
+
+# path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
+# audioFiles = [os.path.join(path, "593010 S3RL feat Krystal - R4V3 B0Y", "audio.mp3")]
+# name = "r4v3"
+# starRatings = [4.49]
+
+# path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
+# audioFiles = [os.path.join(path, "690966 ZYTOKINE - Dancing Dollz feat cold kiss - REDALiCE Remix", "audio.mp3")]
+# name = "dollz"
+# starRatings = [4.52]
+
+path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
+
+# audioFiles = [os.path.join(path, "743371 Asaka - SHINY DAYS (TV Size)", "audio.mp3")]
+# name = "shiny"
+# starRatings = [3.38]
+
+# audioFiles = [os.path.join(path, "795073 MASAYOSHI IIMORI - Hella Deep", "audio.mp3")]
+# name = "deep"
+# starRatings = [5.0]
+
+# audioFiles = [os.path.join(path, "828297 Kobayashi Yuuya (IOSYS) feat Yamamoto Momiji (monotone) - Hinaru Medjed no Hinaru Yuuutsu", "audio.mp3")]
+# name = "yuuutsu"
+# starRatings = [5.17]
+
+# audioFiles = [os.path.join(path, "966087 The Flashbulb - Creep", "audio.mp3")]
+# name = "creep"
+# starRatings = [5.0]
+
+# audioFiles = [os.path.join(path, "1047632 HyuN feat Ms Valentine - CROSS FATE", "audio.mp3")]
+# name = "fate"
+# starRatings = [5.34]
+
+# audioFiles = [os.path.join(path, "1104532 Laur - Vindication", "Laur - Vindication.mp3")]
+# name = "vindication"
+# starRatings = [4.82]
+
+audioFiles = [os.path.join(path, "1158131 Kudou Chitose - Nilgiri", "audio.mp3")]
+name = "nilgiri"
+starRatings = [3.41]
+
+
+
+
+
 assert(len(audioFiles) == len(starRatings))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
-onsetThresholds = [0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.11, 0.12, 0.15, 0.18, 0.21, 0.25, 0.30, 0.35, 0.40, 0.45, 0.5, 0.55, 0.6]  # required "confidence" for a prediction peak to be considered an onset
+onsetThresholds = [0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.19, 0.20, 0.22, 0.25, 0.30, 0.35]  # required "confidence" for a prediction peak to be considered an onset
 prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFiles, starRatings)
 processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO Presumably this will throw exceptions for more than one song
 for h in range(len(audioFiles)):

@@ -38,7 +38,7 @@ def createMap(onsets, audioFile, name, starRating):
 
     shutil.copyfile(audioFile, f"{path}/{os.path.basename(audioFile)}")  # TODO untested
 
-    osuFile = generate_osu_file.generateOsuFile(onsets, name, starRating)
+    osuFile = generate_osu_file.generateOsuFile(onsets, name, starRating, audioFile)
 
     file = open(f"{path}/map.osu", "w")
     file.write(osuFile)
