@@ -396,8 +396,8 @@ def createConvLSTM():
     ######################################################################################################
     #
     #
-    dataProportion = 0.5  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
-    epochs = 50
+    dataProportion = 0.005  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
+    epochs = 1
 
     gradients_per_update = 10  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
     batch_size = 5  # TODO really cutting it close here, can only half one more time # This now seems to have no effect
@@ -455,13 +455,9 @@ def createConvLSTM():
 
     # sequence = tf.keras.Input(shape=(max_sequence_length, hidden_units))  # TODO core issue? is this shape sane? Is LSTM getting entire length of audio at once?
     # part1 = base_maps(sequence)
-
     # base_maps = tf.keras.Input(shape=(max_sequence_length, hidden_units))(base_maps)
-
     starRatingFeat = tf.keras.Input(shape=(max_sequence_length, 1))
-
     # merged = concatenate([starRatingFeat, base_maps])
-
     merged = tf.keras.layers.Concatenate()([starRatingFeat, base_maps])
 
     base_maps = LSTM(hidden_units_lstm, return_sequences=True)(merged)#(merged)  #TODO input shape? Needed? Correct? Used? , input_shape=(25,200)
@@ -507,9 +503,10 @@ def createConvLSTM():
         pickle.dump(history, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-# createConvLSTM()
+createConvLSTM()
 
-model = tf.keras.models.load_model("models/onset")
+# model = tf.keras.models.load_model("models/onset")
+
 # audioFiles = ["sample_maps/795073 MASAYOSHI IIMORI - Hella Deep/audio.mp3"]
 # name = "Hella Deep"
 # audioFiles = ["sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.mp3"]
@@ -569,22 +566,22 @@ path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
 # name = "vindication"
 # starRatings = [4.82]
 
-audioFiles = [os.path.join(path, "1158131 Kudou Chitose - Nilgiri", "audio.mp3")]
-name = "nilgiri"
-starRatings = [3.41]
+# audioFiles = [os.path.join(path, "1158131 Kudou Chitose - Nilgiri", "audio.mp3")]
+# name = "nilgiri"
+# starRatings = [3.41]
 
 
 
 
 
-assert(len(audioFiles) == len(starRatings))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
-onsetThresholds = [0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.19, 0.20, 0.22, 0.25, 0.30, 0.35]  # required "confidence" for a prediction peak to be considered an onset
-prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFiles, starRatings)
-processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO Presumably this will throw exceptions for more than one song
-for h in range(len(audioFiles)):
-    for i in onsetThresholds:
-        th = "{0:.2f}".format(i)
-        newName = name + f" - T{th}"  # append threshold to name
-        controllers.onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFiles[h], newName, starRatings[h], i)
+# assert(len(audioFiles) == len(starRatings))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
+# onsetThresholds = [0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.19, 0.20, 0.22, 0.25, 0.30, 0.35]  # required "confidence" for a prediction peak to be considered an onset
+# prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFiles, starRatings)
+# processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO Presumably this will throw exceptions for more than one song
+# for h in range(len(audioFiles)):
+#     for i in onsetThresholds:
+#         th = "{0:.2f}".format(i)
+#         newName = name + f" - T{th}"  # append threshold to name
+#         controllers.onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFiles[h], newName, starRatings[h], i)
 
 print("got to end")

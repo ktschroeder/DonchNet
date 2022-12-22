@@ -147,11 +147,11 @@ class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgar
             out[i] = bookended
         return out
     
-    def __init__(self, songFilenames, mapFilenames, batch_size, hesitancy, useAudio) :
+    def __init__(self, songFilenames, mapFilenames, batch_size, nonhesitancy, useAudio) :
         self.songFilenames = songFilenames
         self.mapFilenames = mapFilenames
         self.batch_size = batch_size
-        self.hesitancy = hesitancy
+        self.nonhesitancy = nonhesitancy
         self.useAudio = useAudio
     
     def __len__(self) :
@@ -183,9 +183,9 @@ class My_Custom_Generator(keras.utils.Sequence): # via https://medium.com/@mrgar
 
         # Untested but perhaps good to go
         if self.useAudio:
-            xMaps, xAudios, yNotes = batchPrepareFeatsForModel(mapInfo, self.hesitancy, songFeats)
+            xMaps, xAudios, yNotes = batchPrepareFeatsForModel(mapInfo, self.nonhesitancy, songFeats)
         else:
-            xMaps, yNotes = batchPrepareFeatsForModel(mapInfo, self.hesitancy)
+            xMaps, yNotes = batchPrepareFeatsForModel(mapInfo, self.nonhesitancy)
 
         xMaps = reshape(xMaps, (len(xMaps), config.colorUnrollings+1, 6+finishers)).astype(float32)  # want |onsets|, 80, 4+4, 1. 4+4 is the 4 colors and 4 other map feats.
         if self.useAudio:
@@ -245,7 +245,7 @@ def batchGetMapFeats(mapFeatPaths):
         mapFeats.append([id, onsets, sr])
     return mapFeats
 
-def batchPrepareFeatsForModel(mapInfo, hesitancy, songFeats = None):  # mapInfo has tuples of id, onsets, notes, sr for each map. songFeats has 15x40 per onset. Need to make unrollings.
+def batchPrepareFeatsForModel(mapInfo, nonhesitancy, songFeats = None):  # mapInfo has tuples of id, onsets, notes, sr for each map. songFeats has 15x40 per onset. Need to make unrollings.
 
     onsetCount = 0
     for map in mapInfo:
@@ -255,7 +255,7 @@ def batchPrepareFeatsForModel(mapInfo, hesitancy, songFeats = None):  # mapInfo 
     goAheads = 0
     for i in range(len(hesitant)):
         h = 1
-        if random.random() > hesitancy:  # if random float from 0 to 1 is over hesitancy then we include the associated onset, else skip
+        if random.random() > nonhesitancy:  # if random float from 0 to 1 is over hesitancy then we include the associated onset, else skip
             h = 0
             goAheads += 1
         hesitant[i] = h
@@ -414,7 +414,7 @@ def createColorModel():
     #
     dataProportion = 0.1  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
     epochs = 300
-    hesitancy = 0.005  # probabaility each onset will be considered. The idea is to take only a few onsets from each map, to prevent overfitting. 1000 onsets in a map * 0.005 ==> ~5 onsets
+    nonhesitancy = 0.005  # probabaility each onset will be considered. The idea is to take only a few onsets from each map, to prevent overfitting. 1000 onsets in a map * 0.005 ==> ~5 onsets
                       # in all cases, at least one onset is taken from each map considered (for stability)
 
     includeAudioFeats = config.includeAudioFeatsInColorModel  # whether to include audio feats in the model
@@ -435,8 +435,8 @@ def createColorModel():
     print(f"Color training will use {len(X_train_filenames)} maps and validation will use {len(X_val_filenames)} maps, via dataProportion {dataProportion}.")
     
     
-    my_training_batch_generator = My_Custom_Generator(X_train_filenames, y_train_filenames, generator_batch_size, hesitancy, includeAudioFeats)
-    my_validation_batch_generator = My_Custom_Generator(X_val_filenames, y_val_filenames, generator_batch_size, hesitancy, includeAudioFeats)  # inappropriate to use randomness in validation?
+    my_training_batch_generator = My_Custom_Generator(X_train_filenames, y_train_filenames, generator_batch_size, nonhesitancy, includeAudioFeats)
+    my_validation_batch_generator = My_Custom_Generator(X_val_filenames, y_val_filenames, generator_batch_size, nonhesitancy, includeAudioFeats)  # inappropriate to use randomness in validation?
 
 
     clear_session()
@@ -528,21 +528,39 @@ starRatings = [5.0]
 # starRatings = [5.5]
 temperatures = [1.2, 1.1, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]
 mapfile = "map.osu"
+audiofile = "audio.mp3"
 # audioFiles = ["sample_maps/1041076 MYUKKE - OCCHOCO-REST-LESS/audio.mp3"]
 # mapFiles = ["sample_maps/1041076 MYUKKE - OCCHOCO-REST-LESS/MYUKKE. - OCCHOCO-REST-LESS (Jaye) [Oni].osu"]
 # starRatings = [4.5]
 for temperature in temperatures:
 
     
-    folder = "babylonia_t012"
-    audiofile = "DISTORTED NEW AGE.mp3"
-    starRatings[0] = 5.04
+    # folder = "babylonia_t012"
+    # starRatings[0] = 5.04
+
+    # folder = "poison_t007"
+    # starRatings[0] = 4.7
+
+    # folder = "creep_t008" # not as good onsets as 10
+    # folder = "creep_t010"
+    
+    # starRatings[0] = 5.7
+
+    # TODO audio file in maps is audio.mp3, just change the filenames
+
+    # folder = "shiny_t009"
+    # audiofile = "audio.mp3"
+    # starRatings[0] = 3.38
+
+    folder = "vindication_t010"
+    audiofile = "audio.mp3"
+    starRatings[0] = 4.82
 
 
 
     name = folder
-    audioFiles[0] = os.path.join("C:/Users/Admin/Desktop/things from taiko project/TEST MAPS/Contenders for onset", folder, audiofile)
-    mapFiles[0] = os.path.join("C:/Users/Admin/Desktop/things from taiko project/TEST MAPS/Contenders for onset", folder, mapfile)
+    # audioFiles[0] = os.path.join("C:/Users/Admin/Desktop/things from taiko project/TEST MAPS/Contenders for onset", folder, audiofile)
+    # mapFiles[0] = os.path.join("C:/Users/Admin/Desktop/things from taiko project/TEST MAPS/Contenders for onset", folder, mapfile)
 
 
 
