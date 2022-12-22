@@ -162,7 +162,7 @@ def makePredictionFromAudio(model, audioFiles, SRs):
     generator_batch_size = 1  # don't confuse this with proportion of data used, like in training. Must be an int
     my_prediction_batch_generator = Custom_Prediction_Generator(X_filenames, SRs, generator_batch_size)
 
-    prediction = model.predict(my_prediction_batch_generator, batch_size=generator_batch_size, verbose=1)
+    prediction = model.predict(my_prediction_batch_generator, batch_size=generator_batch_size, verbose=0)
 
     # with open('models/prediction.pickle', 'wb') as handle:
     #     pickle.dump(prediction, handle, protocol=pickle.HIGHEST_PROTOCOL)

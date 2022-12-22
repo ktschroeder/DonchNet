@@ -6,6 +6,7 @@ import json
 from feature_extraction import map_json_to_feats
 from scipy.signal import argrelextrema
 import numpy as np
+from statistics import mean
 
 def onsetMetrics():
     # import model
@@ -64,26 +65,33 @@ def onsetMetrics():
                 groundTruthOnsets.append(mapOnsets)
     # now we have all file names in mapFeatsFiles and songFeatsFiles
 
-    print("start...")
+    precisions = []
+    recalls = []
+    fScores = []
+    print(f"start... for {len(mapFeatsFiles)} maps...")
     # make predictions for each
     for i in range(len(mapFeatsFiles)):
+        if i % 50 == 0:
+            print(f"map number {i}...")
+
         prediction = onset_predict.makePredictionFromAudio(model, [songFeatsFiles[i]], [SRs[i]])
-        print(prediction.shape)
         prediction = np.reshape(prediction, (len(prediction[0])))
         predictions_smoothed = np.convolve(prediction, np.hamming(5), 'same')
         maxima = argrelextrema(predictions_smoothed, np.greater_equal, order=1)[0]
 
 
 
-        fScore, threshold = tuneThreshold(prediction, maxima, groundTruthOnsets[i])
+        fScore, precision, recall, threshold = tuneThreshold(prediction, maxima, groundTruthOnsets[i])
+        precisions.append(precision)
+        recalls.append(recall)
+        fScores.append(fScore)
 
-        print(fScore)
+        print(f"Threshold {threshold} gave F-score {fScore}.")
 
+        # if i > 5:
+        #     break
 
-
-
-        if i > 5:
-            break
+    print(f"Averages: F-score {mean(fScores)}, precision {mean(precisions)}, recall {mean(recalls)} across {len(fScores)} items.")
     
 
     # within each map/prediction pair, compare list of onsets. Include relevant math. Can try tuning for thresholds and report this as a special metric.
@@ -94,22 +102,39 @@ def onsetMetrics():
     return
 
 def tuneThreshold(prediction, maxima, groundTruths):
+    thresholdPrecision = 0.01  # precision for threshold at which to stop trying to improve
     minThreshold = 0.01
     maxThreshold = 0.99
-    startThreshold = 0.05
+    startThreshold = 0.10
     threshold = startThreshold
     prevThreshold = -1.0
+    bestFScore = -1
+    bestPrecision = -1
+    bestRecall = -1
+    bestThreshold = -1
     # while True: TODO binary search here? Local minima possible though because of harmonic nature of f score?
+    
+    thresholds = [x / 100.0 for x in range(100)]  # 0.01, 0.02, ..., 0.99
+    # while abs(threshold - prevThreshold) > thresholdPrecision:
+    for threshold in thresholds:
+        fScore, precision, recall = tuneThresholdHelper(prediction, maxima, groundTruths, threshold)
+        if fScore > bestFScore:
+            bestFScore = fScore
+            bestRecall = recall
+            bestPrecision = precision
+            bestThreshold = threshold
+
+    return bestFScore, bestPrecision, bestRecall, bestThreshold
+    # return fScore, precision, recall, threshold
+
+def tuneThresholdHelper(prediction, maxima, groundTruths, threshold):
     onsets = []
     for i in maxima:
         if prediction[i] >= threshold:
             t = float(i) * 10  # 10 ms per frame
             onsets.append(t)
-    # print(len(maxima))
-    # print(len(onsets))
-    # print("-------")
-    fScore = getFScore(onsets, groundTruths)
-    return fScore, threshold
+    fScore, precision, recall = getFScore(onsets, groundTruths)
+    return fScore, precision, recall
 
 
 def getFScore(onsets, groundTruths):
@@ -127,7 +152,7 @@ def getFScore(onsets, groundTruths):
     onsetIndex = 0
     truthIndex = 0
     prevPositiveGroundTruth = -1000  # time of ground truth for previous true positive
-    duration = max(max(onsets), max(groundTruths))  # duration in milliseconds
+    duration = max(max(onsets, default = 0), max(groundTruths))  # duration in milliseconds
     outOfOnsets = 0
     outOfTruths = 0
     rounds = 0
@@ -184,12 +209,15 @@ def getFScore(onsets, groundTruths):
     assert(truePositives + falsePositives == len(onsets))
 
     
+    if truePositives == 0:
+        precision = 0.00001
+        recall = precision
+    else:
+        precision = truePositives / (truePositives + falsePositives)
+        recall = truePositives / (truePositives + falseNegatives)
 
-    precision = max(truePositives / (truePositives + falsePositives), 0.00001)
-    recall = max(truePositives / (truePositives + falseNegatives), 0.00001)
-
-    print(f"rounds {rounds}, truePositives {truePositives}, falsePositives {falsePositives}, predicted onsets {len(onsets)}, precision {precision}, recall {recall}")
+    # print(f"rounds {rounds}, onsets {len(onsets)}, truths {len(groundTruths)}, truePositives {truePositives}, falsePositives {falsePositives}, predicted onsets {len(onsets)}, precision {precision}, recall {recall}")
     fScore = 2 * (precision * recall) / (precision + recall)
-    return fScore
+    return fScore, precision, recall
 
 onsetMetrics()
