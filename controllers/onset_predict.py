@@ -20,20 +20,27 @@ def batchGetSongFeatsFromAudios(songFeatPaths):  # needs to also analyze audio i
     for item in songFeatPaths:
 
         ext = os.path.splitext(item)[-1].lower()
-        assert(ext == ".mp3" or ext == ".ogg")
 
-        # this includes standardization
-        if ext == ".mp3":
-            ac.mp3ToWav(item, tempWavDir)
-        if ext == ".ogg":
-            ac.oggToWav(item, tempWavDir)
-        audioFeat = atf.makeFeats(tempWavDir)
-        os.remove(tempWavDir)
+        if ext == ".pkl":  # in this case we epect this is the pre-processed frequency info. This is convenient for onset metrics analysis
+            file = open(item, 'rb')
+            audioFeat = pickle.load(file)
 
-        bandMeans = np.loadtxt("data/misc/bandMeans.txt")
-        bandStdevs = np.loadtxt("data/misc/bandStdevs.txt")
+        else:
 
-        audioFeat = dm.normalize(audioFeat, bandMeans, bandStdevs)
+            assert(ext == ".mp3" or ext == ".ogg")
+
+            # this includes standardization
+            if ext == ".mp3":
+                ac.mp3ToWav(item, tempWavDir)
+            if ext == ".ogg":
+                ac.oggToWav(item, tempWavDir)
+            audioFeat = atf.makeFeats(tempWavDir)
+            os.remove(tempWavDir)
+
+            bandMeans = np.loadtxt("data/misc/bandMeans.txt")
+            bandStdevs = np.loadtxt("data/misc/bandStdevs.txt")
+
+            audioFeat = dm.normalize(audioFeat, bandMeans, bandStdevs)
 
         songFeats.append([item[:-4], audioFeat])  
     return songFeats
@@ -157,8 +164,8 @@ def makePredictionFromAudio(model, audioFiles, SRs):
 
     prediction = model.predict(my_prediction_batch_generator, batch_size=generator_batch_size, verbose=1)
 
-    with open('models/prediction.pickle', 'wb') as handle:
-        pickle.dump(prediction, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # with open('models/prediction.pickle', 'wb') as handle:
+    #     pickle.dump(prediction, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return prediction
 
