@@ -19,6 +19,8 @@ import tensorflow.keras.backend as K
 from tensorflow.keras.utils import Sequence
 from tensorflow.keras.optimizers import Optimizer
 
+import keras_tuner
+
 import config
 
 from sklearn.utils import shuffle
@@ -391,19 +393,91 @@ def batchPrepareFeatsForModel(mapFeats, songFeats):
     return pMapFeats, pSongFeats, starRatings
 
 
+def buildModel(hp=None):
+    clear_session()
+
+    if hp:  # tuning
+        conv2d_1_kernels = hp.Int("conv2d_1_kernels", min_value=6, max_value=20, step=2)
+        conv2d_1_kernel_height = 7
+        conv2d_1_kernel_width = 3
+        conv2d_2_kernels = hp.Int("conv2d_2_kernels", min_value=12, max_value=40, step=4)
+        conv2d_2_kernel_height = 3
+        conv2d_2_kernel_width = 3
+        maxpool_length = 1
+        maxpool_width = 3
+        lstm_1_nodes = hp.Int("lstm_1_nodes", min_value=100, max_value=300, step=25)
+        lstm_2_nodes = hp.Int("lstm_2_nodes", min_value=100, max_value=300, step=25)
+        dense_1_nodes = hp.Int("dense_1_nodes", min_value=100, max_value=350, step=16)
+        dense_2_nodes = hp.Int("dense_2_nodes", min_value=40, max_value=200, step=8)
+        learning_rate = hp.Float("learning_rate", min_value=1e-6, max_value=1e-1, sampling="log")
+        momentum = 0.9
+
+        gradients_per_update = 10  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
+    else:
+        conv2d_1_kernels = 10
+        conv2d_1_kernel_height = 7
+        conv2d_1_kernel_width = 3
+        conv2d_2_kernels = 20
+        conv2d_2_kernel_height = 3
+        conv2d_2_kernel_width = 3
+        maxpool_length = 1
+        maxpool_width = 3
+        lstm_1_nodes = 200
+        lstm_2_nodes = 200
+        dense_1_nodes = 256
+        dense_2_nodes = 128
+        learning_rate = 0.01  # was 0.01 originally
+        momentum = 0.9
+
+        gradients_per_update = 10  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
+
+    input = tf.keras.Input(shape=(max_sequence_length,15,40,1))
+
+    # base_maps = tf.keras.layers.Lambda(context)(input)
+    base_maps = TimeDistributed(Conv2D(conv2d_1_kernels, (conv2d_1_kernel_height,conv2d_1_kernel_width),activation='relu', padding='same',data_format='channels_last'))(input)
+    base_maps = TimeDistributed(MaxPool2D(pool_size=(maxpool_length,maxpool_width), padding='same'))(base_maps) # TODO is pooling correct with respect to dimensions?
+    base_maps = TimeDistributed(Conv2D(conv2d_2_kernels, (conv2d_2_kernel_height,conv2d_2_kernel_width),activation='relu', padding='same',data_format='channels_last'))(base_maps)
+    base_maps = TimeDistributed(MaxPool2D(pool_size=(maxpool_length,maxpool_width), padding='same'))(base_maps)
+    base_maps = TimeDistributed(Flatten())(base_maps) # see above notes, does this overly flatten temporal?
+
+    # sequence = tf.keras.Input(shape=(max_sequence_length, hidden_units))  # TODO core issue? is this shape sane? Is LSTM getting entire length of audio at once?
+    # part1 = base_maps(sequence)
+    # base_maps = tf.keras.Input(shape=(max_sequence_length, hidden_units))(base_maps)
+    starRatingFeat = tf.keras.Input(shape=(max_sequence_length, 1))
+    # merged = concatenate([starRatingFeat, base_maps])
+    merged = tf.keras.layers.Concatenate()([starRatingFeat, base_maps])
+
+    base_maps = LSTM(lstm_1_nodes, return_sequences=True)(merged)#(merged)  #TODO input shape? Needed? Correct? Used? , input_shape=(25,200)
+    base_maps = Dropout(0.5, noise_shape=(None,1,lstm_1_nodes))(base_maps)  # is this shape correct? TODO fix , noise_shape=(None,1,hidden_units)
+    base_maps = LSTM(lstm_2_nodes, return_sequences=True)(base_maps)  # TODO do we want return_sequences again, really?
+    base_maps = Dropout(0.5, noise_shape=(None,1,lstm_2_nodes))(base_maps)   # TODO noise shape may be incorrect now after shape changes , noise_shape=(None,1,hidden_units)
+    base_maps = Dense(dense_1_nodes, activation='relu')(base_maps)
+    base_maps = Dropout(0.5)(base_maps)
+    base_maps = Dense(dense_2_nodes, activation='relu')(base_maps)
+    base_maps = Dropout(0.5)(base_maps) 
+
+    base_maps = Dense(1, activation='sigmoid')(base_maps)
+
+    ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input, starRatingFeat], outputs=[base_maps])
+
+    ga_model.compile(  #ga for gradient accumulation
+        loss = 'binary_crossentropy',
+        # metrics = ['accuracy'],
+        optimizer = tf.keras.optimizers.SGD(momentum=momentum, nesterov=True, learning_rate=learning_rate),
+        metrics = ["binary_crossentropy", tf.keras.metrics.AUC(curve='PR')] )
+
+    return ga_model
+
 def createConvLSTM():
 
     ######################################################################################################
     #
     #
-    dataProportion = 0.005  # estimated portion (0 to 1) of data to be used. Based on randomness, so this is an estimate, unless it's 1.0, which uses all data.
+    tune = 1  # whether to tune
+    dataProportion = 0.002  # estimated portion (0 to 1) of data to be used. Based on randomness in a way that this is an estimate, unless it's 1.0, which uses all data.
     epochs = 1
 
-    gradients_per_update = 10  # i.e., number of batches to accumulate gradients before updating. Effective batch size after gradient accumulation is this * batch size.
     batch_size = 5  # TODO really cutting it close here, can only half one more time # This now seems to have no effect
-    learning_rate = 0.01  # was 0.01 originally
-    hidden_units_lstm = 200
-
     generator_batch_size = 2  # TODO pick near as large as possible for speed? This results in trying to allocate the tensor in memory for some reason. 3 is OOM.
     #
     #
@@ -442,146 +516,146 @@ def createConvLSTM():
     # padding_value = -999
     # seq_length_cap = 30000  # 30000 frames = 300 seconds = 5 minutes
 
-    clear_session()
-
-    input = tf.keras.Input(shape=(max_sequence_length,15,40,1))
-
-    # base_maps = tf.keras.layers.Lambda(context)(input)
-    base_maps = TimeDistributed(Conv2D(10, (7,3),activation='relu', padding='same',data_format='channels_last'))(input)
-    base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps) # TODO is pooling correct with respect to dimensions?
-    base_maps = TimeDistributed(Conv2D(20, (3,3),activation='relu', padding='same',data_format='channels_last'))(base_maps)
-    base_maps = TimeDistributed(MaxPool2D(pool_size=(1,3), padding='same'))(base_maps)
-    base_maps = TimeDistributed(Flatten())(base_maps) # see above notes, does this overly flatten temporal?
-
-    # sequence = tf.keras.Input(shape=(max_sequence_length, hidden_units))  # TODO core issue? is this shape sane? Is LSTM getting entire length of audio at once?
-    # part1 = base_maps(sequence)
-    # base_maps = tf.keras.Input(shape=(max_sequence_length, hidden_units))(base_maps)
-    starRatingFeat = tf.keras.Input(shape=(max_sequence_length, 1))
-    # merged = concatenate([starRatingFeat, base_maps])
-    merged = tf.keras.layers.Concatenate()([starRatingFeat, base_maps])
-
-    base_maps = LSTM(hidden_units_lstm, return_sequences=True)(merged)#(merged)  #TODO input shape? Needed? Correct? Used? , input_shape=(25,200)
-    base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units_lstm))(base_maps)  # is this shape correct? TODO fix , noise_shape=(None,1,hidden_units)
-    base_maps = LSTM(hidden_units_lstm, return_sequences=True)(base_maps)  # TODO do we want return_sequences again, really?
-    base_maps = Dropout(0.5, noise_shape=(None,1,hidden_units_lstm))(base_maps)   # TODO noise shape may be incorrect now after shape changes , noise_shape=(None,1,hidden_units)
-    base_maps = Dense(256, activation='relu')(base_maps)
-    base_maps = Dropout(0.5)(base_maps)
-    base_maps = Dense(128, activation='relu')(base_maps)
-    base_maps = Dropout(0.5)(base_maps) 
-
-    base_maps = Dense(1, activation='sigmoid')(base_maps)
-
     
+    if not tune:
+        ga_model = buildModel()
 
-    ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input, starRatingFeat], outputs=[base_maps])
-#   ga_model = CustomTrainStep(n_gradients=gradients_per_update, inputs=[input, starRatingFeat], outputs=[base_maps])
-
-    # bind all
-    ga_model.compile(  #ga for gradient accumulation
-        loss = 'binary_crossentropy',
-        # metrics = ['accuracy'],
-        optimizer = tf.keras.optimizers.SGD(momentum=0.9, nesterov=True, learning_rate=learning_rate),
-        metrics = tf.keras.metrics.AUC(curve='PR') )
-
-    checkpoint_filepath = 'models/checkpoint'
-    model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+        checkpoint_filepath = 'models/checkpoint'
+        model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
         filepath=checkpoint_filepath,
         save_weights_only=False,
-        monitor='val_auc',
+        monitor=tf.keras.metrics.AUC(curve='PR'),  # was "val_auc"
         mode='max',
         save_best_only=True)
 
-    # history = ga_model.fit(x, y, batch_size=batch_size, epochs=epochs, verbose=1, validation_split=0.2, )
-    history = ga_model.fit(my_training_batch_generator, validation_data=my_validation_batch_generator, batch_size=batch_size, epochs=epochs, verbose=1, callbacks=[model_checkpoint_callback])
-    print(ga_model.summary())
+        # history = ga_model.fit(x, y, batch_size=batch_size, epochs=epochs, verbose=1, validation_split=0.2, )
+        history = ga_model.fit(my_training_batch_generator, validation_data=my_validation_batch_generator, batch_size=batch_size, epochs=epochs, verbose=1, callbacks=[model_checkpoint_callback])
+        print(ga_model.summary())
+
+        ga_model.save("models/onset")
+
+        with open('models/history.pickle', 'wb') as handle:
+            pickle.dump(history, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    else:
+        # ga_model = buildModel(keras_tuner.HyperParameters())
+
+        tuner = keras_tuner.RandomSearch(
+            hypermodel=buildModel,
+            objective=keras_tuner.Objective("val_binary_crossentropy", "min"),
+            max_trials=3,
+            executions_per_trial=2,
+            overwrite=True,
+            directory="C:/Users/Admin/Documents/GitHub/taiko_project/tuning",
+            project_name="onset",
+        )
+
+        print(tuner.search_space_summary())
+
+        tuner.search(my_training_batch_generator, validation_data=my_validation_batch_generator, batch_size=batch_size, epochs=epochs, verbose=1)
+
+        print("Completed tuning.")
+
+    
+
+    
+##############################################################################################################
+train = 1
+predict = 0
 
 
-    ga_model.save("models/onset")
-    # TODO save training history to be viewed later
+if train:
+    createConvLSTM()
 
-    with open('models/history.pickle', 'wb') as handle:
-        pickle.dump(history, handle, protocol=pickle.HIGHEST_PROTOCOL)
+if predict:
+    model = tf.keras.models.load_model("models/onset")
 
+    # audioFiles = ["sample_maps/795073 MASAYOSHI IIMORI - Hella Deep/audio.mp3"]
+    # name = "Hella Deep"
+    # audioFiles = ["sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.mp3"]
+    # name = "Inferno"
+    # audioFiles = ["sample_maps/1061593 katagiri - Urushi/audio.mp3"]
+    # name = "Urushi"  # TODO need to update this if used for more than one song
+    # starRatings = [5.0]
 
-createConvLSTM()
+    # path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
+    # audioFiles = [os.path.join(path, "53438 Troupe Record - Babylonia", "DISTORTED NEW AGE.mp3")]
+    # name = "babylonia"
+    # starRatings = [5.04]
 
-# model = tf.keras.models.load_model("models/onset")
+    # path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
+    # audioFiles = [os.path.join(path, "245517 LeaF - Poison AND_OR Affection", "Poison ANDOR Affection.mp3")]
+    # name = "poison"
+    # starRatings = [4.68]
 
-# audioFiles = ["sample_maps/795073 MASAYOSHI IIMORI - Hella Deep/audio.mp3"]
-# name = "Hella Deep"
-# audioFiles = ["sample_maps/481954 9mm Parabellum Bullet - Inferno/audio.mp3"]
-# name = "Inferno"
-# audioFiles = ["sample_maps/1061593 katagiri - Urushi/audio.mp3"]
-# name = "Urushi"  # TODO need to update this if used for more than one song
-# starRatings = [5.0]
+    # path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
+    # audioFiles = [os.path.join(path, "394634 Gojou Mayumi - DANZEN! Futari wa Pretty Cure", "DANZEN.mp3")]
+    # name = "danzen"
+    # starRatings = [3.51]
 
-# path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
-# audioFiles = [os.path.join(path, "53438 Troupe Record - Babylonia", "DISTORTED NEW AGE.mp3")]
-# name = "babylonia"
-# starRatings = [5.04]
+    # path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
+    # audioFiles = [os.path.join(path, "593010 S3RL feat Krystal - R4V3 B0Y", "audio.mp3")]
+    # name = "r4v3"
+    # starRatings = [4.49]
 
-# path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
-# audioFiles = [os.path.join(path, "245517 LeaF - Poison AND_OR Affection", "Poison ANDOR Affection.mp3")]
-# name = "poison"
-# starRatings = [4.68]
+    # path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
+    # audioFiles = [os.path.join(path, "690966 ZYTOKINE - Dancing Dollz feat cold kiss - REDALiCE Remix", "audio.mp3")]
+    # name = "dollz"
+    # starRatings = [4.52]
 
-# path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
-# audioFiles = [os.path.join(path, "394634 Gojou Mayumi - DANZEN! Futari wa Pretty Cure", "DANZEN.mp3")]
-# name = "danzen"
-# starRatings = [3.51]
+    path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
 
-# path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
-# audioFiles = [os.path.join(path, "593010 S3RL feat Krystal - R4V3 B0Y", "audio.mp3")]
-# name = "r4v3"
-# starRatings = [4.49]
+    # audioFiles = [os.path.join(path, "743371 Asaka - SHINY DAYS (TV Size)", "audio.mp3")]
+    # name = "shiny"
+    # starRatings = [3.38]
 
-# path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
-# audioFiles = [os.path.join(path, "690966 ZYTOKINE - Dancing Dollz feat cold kiss - REDALiCE Remix", "audio.mp3")]
-# name = "dollz"
-# starRatings = [4.52]
+    # audioFiles = [os.path.join(path, "795073 MASAYOSHI IIMORI - Hella Deep", "audio.mp3")]
+    # name = "deep"
+    # starRatings = [5.0]
 
-path = "C:/Users/Admin/Desktop/things from taiko project/TEST MAPS"
+    # audioFiles = [os.path.join(path, "828297 Kobayashi Yuuya (IOSYS) feat Yamamoto Momiji (monotone) - Hinaru Medjed no Hinaru Yuuutsu", "audio.mp3")]
+    # name = "yuuutsu"
+    # starRatings = [5.17]
 
-# audioFiles = [os.path.join(path, "743371 Asaka - SHINY DAYS (TV Size)", "audio.mp3")]
-# name = "shiny"
-# starRatings = [3.38]
+    # audioFiles = [os.path.join(path, "966087 The Flashbulb - Creep", "audio.mp3")]
+    # name = "creep"
+    # starRatings = [5.0]
 
-# audioFiles = [os.path.join(path, "795073 MASAYOSHI IIMORI - Hella Deep", "audio.mp3")]
-# name = "deep"
-# starRatings = [5.0]
+    # audioFiles = [os.path.join(path, "1047632 HyuN feat Ms Valentine - CROSS FATE", "audio.mp3")]
+    # name = "fate"
+    # starRatings = [5.34]
 
-# audioFiles = [os.path.join(path, "828297 Kobayashi Yuuya (IOSYS) feat Yamamoto Momiji (monotone) - Hinaru Medjed no Hinaru Yuuutsu", "audio.mp3")]
-# name = "yuuutsu"
-# starRatings = [5.17]
+    # audioFiles = [os.path.join(path, "1104532 Laur - Vindication", "Laur - Vindication.mp3")]
+    # name = "vindication"
+    # starRatings = [4.82]
 
-# audioFiles = [os.path.join(path, "966087 The Flashbulb - Creep", "audio.mp3")]
-# name = "creep"
-# starRatings = [5.0]
-
-# audioFiles = [os.path.join(path, "1047632 HyuN feat Ms Valentine - CROSS FATE", "audio.mp3")]
-# name = "fate"
-# starRatings = [5.34]
-
-# audioFiles = [os.path.join(path, "1104532 Laur - Vindication", "Laur - Vindication.mp3")]
-# name = "vindication"
-# starRatings = [4.82]
-
-# audioFiles = [os.path.join(path, "1158131 Kudou Chitose - Nilgiri", "audio.mp3")]
-# name = "nilgiri"
-# starRatings = [3.41]
+    # audioFiles = [os.path.join(path, "1158131 Kudou Chitose - Nilgiri", "audio.mp3")]
+    # name = "nilgiri"
+    # starRatings = [3.41]
 
 
+    # audioFiles = [os.path.join(path, "1158131 Kudou Chitose - Nilgiri", "audio.mp3")]
+    # name = "nilgiri"
+    # starRatings = [3.41]
+
+    # audioFiles = ["C:/Users/Admin/Documents/GitHub/taiko_project/sample_maps/821745 Dirty Androids - Egret and Willow/audio.mp3"]
+    # name = "egret"
+    # starRatings = [5.2]
+
+    audioFiles = ["C:/Users/Admin/Documents/GitHub/taiko_project/sample_maps/1116903 COSIO(ZUNTATA) - FUJIN Rumble/audio.mp3"]
+    name = "fujin"
+    starRatings = [5.0]
 
 
 
-# assert(len(audioFiles) == len(starRatings))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
-# onsetThresholds = [0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.19, 0.20, 0.22, 0.25, 0.30, 0.35]  # required "confidence" for a prediction peak to be considered an onset
-# prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFiles, starRatings)
-# processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO Presumably this will throw exceptions for more than one song
-# for h in range(len(audioFiles)):
-#     for i in onsetThresholds:
-#         th = "{0:.2f}".format(i)
-#         newName = name + f" - T{th}"  # append threshold to name
-#         controllers.onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFiles[h], newName, starRatings[h], i)
+    assert(len(audioFiles) == len(starRatings))  # cardinalities of these must be equal (and in respective order), they match 1-to-1 in the model
+    onsetThresholds = [0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.19, 0.20, 0.21, 0.22, 0.23, 0.24, 0.25, 0.26, 0.27, 0.28, 0.29, 0.30, 0.35, 0.40, 0.45, 0.50]  # required "confidence" for a prediction peak to be considered an onset
+    # onsetThresholds = [0.20, 0.205, 0.21, 0.215, 0.22]
+    prediction = controllers.onset_predict.makePredictionFromAudio(model, audioFiles, starRatings)
+    processedPrediction = controllers.onset_predict.processPrediction(prediction) #TODO Presumably this will throw exceptions for more than one song
+    for h in range(len(audioFiles)):
+        for i in onsetThresholds:
+            th = "{0:.3f}".format(i)
+            newName = name + f" - T{th}"  # append threshold to name
+            controllers.onset_generate_taiko_map.convertOnsetPredictionToMap(prediction, audioFiles[h], newName, starRatings[h], i)
 
 print("got to end")

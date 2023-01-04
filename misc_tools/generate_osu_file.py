@@ -28,10 +28,10 @@ Title:{name}
 TitleUnicode:{name}
 Artist:DonNet
 ArtistUnicode:DonNet
-Creator:DonNet
-Version:Target SR {starRating} (onsets only)
-Source:DonNet
-Tags:DonNet
+Creator:{random.randrange(999999)}
+Version:Target SR {starRating} (onsets) {random.randrange(999999)}
+Source:{random.randrange(999999)}
+Tags:DonNet, {random.randrange(999999)}
 BeatmapID:0
 BeatmapSetID:-1
 

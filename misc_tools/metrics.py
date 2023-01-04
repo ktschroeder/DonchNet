@@ -88,7 +88,7 @@ def onsetMetrics():
 
         print(f"Threshold {threshold} gave F-score {fScore}.")
 
-        # if i > 5:
+        # if i > 30:
         #     break
 
     print(f"Averages: F-score {mean(fScores)}, precision {mean(precisions)}, recall {mean(recalls)} across {len(fScores)} items.")
@@ -144,7 +144,12 @@ def getFScore(onsets, groundTruths):
     # print(groundTruths.shape)
     onsets = list(map(int, onsets))
     groundTruths = list(map(int, groundTruths))
-    window = 20  # radius in milliseconds of window in which predicted onset will be considered a true positive
+
+    assert(onsets == sorted(onsets))
+    assert(groundTruths == sorted(groundTruths))
+
+    window = 25  # radius in milliseconds of window in which predicted onset will be considered a true positive
+    shift = -5  # ms to shift window (positive shifts it later in time, negative earlier). -10 compensates for model's placement policy.
     truePositives = 0
     falsePositives = 0
     trueNegatives = 0
@@ -177,10 +182,10 @@ def getFScore(onsets, groundTruths):
 
         onset = onsets[onsetIndex]
         truth = groundTruths[truthIndex]
-        if onset < truth - window:  # if onset is much earlier than next truth (then we must abandon that onset)
+        if onset < truth - window + shift:  # if onset is much earlier than next truth (then we must abandon that onset)
             falsePositives += 1
             onsetIndex += 1
-        elif onset > truth + window:  # if onset is much later than next truth (then we must abandon that truth)
+        elif onset > truth + window + shift:  # if onset is much later than next truth (then we must abandon that truth)
             falseNegatives += 1
             truthIndex += 1
         else:  # then onset and truth are within the window distance

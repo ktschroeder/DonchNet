@@ -3,6 +3,7 @@ data/mels/*
 data/stored_feats/*
 data/stored_feats2/*
 data/holdout_feats/*
+tuning/*
 data/temp/*
 data/prediction_maps/*
 data/old_prediction_maps/*

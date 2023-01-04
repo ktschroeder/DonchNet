@@ -515,8 +515,8 @@ def createColorModel():
 
 model = tf.keras.models.load_model("models/color")
 
-audioFiles = ["sample_onset_maps/urushi_t008/audio.mp3"]
-mapFiles = ["sample_onset_maps/urushi_t008/map.osu"]
+audioFiles = ["C:/Users/Admin/Desktop/things from taiko project/MAPS FOR TAIKONATION COMAPRISON/egret_t0205/audio.mp3"]
+mapFiles = ["C:/Users/Admin/Desktop/things from taiko project/MAPS FOR TAIKONATION COMAPRISON/egret_t0205/map.osu"]
 starRatings = [5.0] 
 
 # audioFiles = ["sample_maps/1061593 katagiri - Urushi/audio.mp3"]
@@ -527,8 +527,8 @@ starRatings = [5.0]
 # mapFiles = ["sample_maps/481954 9mm Parabellum Bullet - Inferno/9mm Parabellum Bullet - Inferno (Nofool) [Inner Oni].osu"]
 # starRatings = [5.5]
 temperatures = [1.2, 1.1, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]
-mapfile = "map.osu"
-audiofile = "audio.mp3"
+# mapfile = "map.osu"
+# audiofile = "audio.mp3"
 # audioFiles = ["sample_maps/1041076 MYUKKE - OCCHOCO-REST-LESS/audio.mp3"]
 # mapFiles = ["sample_maps/1041076 MYUKKE - OCCHOCO-REST-LESS/MYUKKE. - OCCHOCO-REST-LESS (Jaye) [Oni].osu"]
 # starRatings = [4.5]
@@ -552,13 +552,13 @@ for temperature in temperatures:
     # audiofile = "audio.mp3"
     # starRatings[0] = 3.38
 
-    folder = "vindication_t010"
-    audiofile = "audio.mp3"
+    # folder = "vindication_t010"
+    # audiofile = "audio.mp3"
     starRatings[0] = 4.82
 
 
 
-    name = folder
+    name = "egret"
     # audioFiles[0] = os.path.join("C:/Users/Admin/Desktop/things from taiko project/TEST MAPS/Contenders for onset", folder, audiofile)
     # mapFiles[0] = os.path.join("C:/Users/Admin/Desktop/things from taiko project/TEST MAPS/Contenders for onset", folder, mapfile)
 
